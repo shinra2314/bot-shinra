@@ -4,7 +4,9 @@ const { commandMap, handleComponent } = require('./commands');
 const JsonStore = require('./services/jsonStore');
 const createTempRooms = require('./services/tempRooms');
 const createVoiceTracker = require('./services/voiceTracker');
-const { errorPanel, reply } = require('./ui/components');
+const { errorPanel, panel, reply, COLORS, componentPayload } = require('./ui/components');
+const { levelFromXp, mentionUser } = require('./utils/format');
+const { checkAchievements } = require('./services/achievements');
 
 function validateConfig(config) {
   const warnings = [];
@@ -70,9 +72,38 @@ async function main() {
 
   client.on(Events.MessageCreate, async (message) => {
     if (!message.guildId || message.author.bot) return;
-    store.ensureUser(message.guildId, message.author);
+    const profile = store.ensureUser(message.guildId, message.author);
     const war = store.addClanWarScore(message.guildId, message.author.id, 1, 'message');
-    if (war) await store.save().catch((error) => console.error('War score save error:', error));
+
+    profile.messageCount = (profile.messageCount || 0) + 1;
+    if (profile.messageCount % 5 === 0) {
+      const prevLevel = levelFromXp(profile.xp).level;
+      profile.xp += 3;
+      const newLevel = levelFromXp(profile.xp).level;
+
+      if (newLevel > prevLevel) {
+        const levelUpMsg = panel({
+          title: 'Новый уровень!',
+          description: `${mentionUser(message.author.id)} достиг **${newLevel} уровня**!`,
+          color: COLORS.success
+        });
+        message.channel.send(componentPayload(levelUpMsg)).catch(() => null);
+      }
+    }
+
+    const newAchievements = checkAchievements(profile);
+    if (newAchievements.length > 0) {
+      const achievementMsg = panel({
+        title: 'Новая ачивка!',
+        description: `${mentionUser(message.author.id)} получил: **${newAchievements.join(', ')}**`,
+        color: COLORS.warning
+      });
+      message.channel.send(componentPayload(achievementMsg)).catch(() => null);
+    }
+
+    if (war || profile.messageCount % 5 === 0 || newAchievements.length > 0) {
+      await store.save().catch((error) => console.error('Message processing save error:', error));
+    }
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -88,7 +119,27 @@ async function main() {
           return reply(interaction, errorPanel(`Подожди ещё ${remaining} сек. перед повторным использованием команды.`), { ephemeral: true });
         }
 
-        return command.execute(interaction, context);
+        const result = await command.execute(interaction, context);
+
+        if (interaction.guildId) {
+          const profile = store.getUser(interaction.guildId, interaction.user.id);
+          if (profile) {
+            const earned = checkAchievements(profile);
+            if (earned.length > 0) {
+              await store.save().catch(() => null);
+              const ch = interaction.channel;
+              if (ch?.isTextBased()) {
+                ch.send(componentPayload(panel({
+                  title: 'Новая ачивка!',
+                  description: `${mentionUser(interaction.user.id)} получил: **${earned.join(', ')}**`,
+                  color: COLORS.warning
+                }))).catch(() => null);
+              }
+            }
+          }
+        }
+
+        return result;
       }
 
       if (interaction.isButton() || interaction.isStringSelectMenu()) {

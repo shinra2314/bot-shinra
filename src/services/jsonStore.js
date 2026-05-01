@@ -74,6 +74,9 @@ function createUserData(user, startBalance) {
     clanId: null,
     lovePartnerId: null,
     lastTimely: 0,
+    timelyStreak: 0,
+    lastRepGiven: 0,
+    messageCount: 0,
     inventory: [],
     cosmetics: {
       frames: ['default'],
@@ -141,9 +144,11 @@ class JsonStore {
 
   async save() {
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+    const tmp = `${this.filePath}.tmp`;
     this.writeQueue = this.writeQueue
       .catch(() => undefined)
-      .then(() => fs.writeFile(this.filePath, JSON.stringify(this.data, null, 2), 'utf8'));
+      .then(() => fs.writeFile(tmp, JSON.stringify(this.data, null, 2), 'utf8'))
+      .then(() => fs.rename(tmp, this.filePath));
     return this.writeQueue;
   }
 
@@ -203,6 +208,9 @@ class JsonStore {
     guild.users[user.id].clanId ??= null;
     guild.users[user.id].lovePartnerId ??= null;
     guild.users[user.id].lastTimely ??= 0;
+    guild.users[user.id].timelyStreak ??= 0;
+    guild.users[user.id].lastRepGiven ??= 0;
+    guild.users[user.id].messageCount ??= 0;
     guild.users[user.id].inventory ||= [];
     guild.users[user.id].cosmetics ||= {};
     guild.users[user.id].cosmetics.frames ||= ['default'];

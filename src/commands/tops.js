@@ -26,6 +26,8 @@ const commands = [
       .addSubcommand((subcommand) => subcommand.setName('комнаты').setDescription('Топ по личным комнатам'))
       .addSubcommand((subcommand) => subcommand.setName('любовь').setDescription('Топ по любовным комнатам'))
       .addSubcommand((subcommand) => subcommand.setName('уровень').setDescription('Топ по уровням'))
+      .addSubcommand((subcommand) => subcommand.setName('репутация').setDescription('Топ по репутации'))
+      .addSubcommand((subcommand) => subcommand.setName('сообщения').setDescription('Топ по сообщениям'))
       .addSubcommand((subcommand) => subcommand.setName('рейтинг').setDescription('Топ кланов по очкам'))
       .addSubcommand((subcommand) => subcommand.setName('участники').setDescription('Топ кланов по участникам')),
     async execute(interaction, context) {
@@ -60,6 +62,16 @@ const commands = [
           title: 'Топ по уровням',
           color: COLORS.success,
           rows: () => userRows(context.store.topUsers(guildId, (user) => user.xp || 0), (user) => `ур. ${levelFromXp(user.xp).level} (${user.xp || 0} XP)`)
+        },
+        репутация: {
+          title: 'Топ по репутации',
+          color: COLORS.success,
+          rows: () => userRows(context.store.topUsers(guildId, (user) => user.reputation || 0), (user) => `${user.reputation || 0} реп.`)
+        },
+        сообщения: {
+          title: 'Топ по сообщениям',
+          color: COLORS.info,
+          rows: () => userRows(context.store.topUsers(guildId, (user) => user.messageCount || 0), (user) => `${user.messageCount || 0} сообщ.`)
         },
         рейтинг: {
           title: 'Топ кланов по очкам',

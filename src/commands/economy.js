@@ -22,7 +22,17 @@ const PREDICTIONS = [
   'День обещает удачный дроп, если не открывать все кейсы за один раз.',
   'Голосовой онлайн принесет больше пользы, чем кажется.',
   'Кто-то вспомнит о тебе в чате. Возможно, даже без пинга.',
-  'Монетка сегодня любит смелых, но баланс любит осторожных.'
+  'Монетка сегодня любит смелых, но баланс любит осторожных.',
+  'Кланы набирают силу — хороший день, чтобы задонатить в банк.',
+  'Удача на твоей стороне, но только если не кинешь снежок в модера.',
+  'Сегодня звёзды говорят: открой кейс и не пожалеешь. Наверное.',
+  'Тебя ждёт неожиданная встреча в голосовом канале.',
+  'Если веришь в стрик — продолжай. Он тебя не подведёт.',
+  'Сегодня день рискнуть в дуэли. Но ставь по-маленькой.',
+  'Лучший совет дня: не трать всё сразу, копи на легенду.',
+  'Кто рано встаёт, тому timely даёт. Буквально.',
+  'Сегодня репутация важнее монет. Подумай об этом.',
+  'Маркет ждёт твоих лотов. Время продавать!'
 ];
 
 const TRANSACTION_LABELS = {
@@ -295,23 +305,37 @@ const commands = [
       }
 
       const prediction = PREDICTIONS[Math.floor(Math.random() * PREDICTIONS.length)];
+
+      const lastDate = profile.lastTimely ? new Date(profile.lastTimely).toISOString().slice(0, 10) : null;
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      if (lastDate === yesterday) {
+        profile.timelyStreak = (profile.timelyStreak || 0) + 1;
+      } else if (lastDate !== new Date().toISOString().slice(0, 10)) {
+        profile.timelyStreak = 1;
+      }
+
+      const streak = profile.timelyStreak || 1;
+      const streakMultiplier = 1 + Math.min(streak, 30) * 0.05;
+      const reward = Math.floor(context.config.timelyReward * streakMultiplier);
+
       profile.lastTimely = Date.now();
-      profile.balance += context.config.timelyReward;
+      profile.balance += reward;
       profile.snowballs += context.config.timelySnowballs;
-      profile.xp += 35;
+      profile.xp += 35 + Math.min(streak, 30) * 2;
       context.store.recordTransaction(interaction.guildId, {
         type: 'timely',
         toId: interaction.user.id,
-        amount: context.config.timelyReward,
+        amount: reward,
         note: 'timely reward'
       });
       await context.store.save();
 
+      const streakLine = streak > 1 ? `\n🔥 Стрик: **${streak}** дн. (x${streakMultiplier.toFixed(2)} бонус)` : '';
       return reply(
         interaction,
         panel({
           title: 'Предсказание дня',
-          description: `${mentionUser(interaction.user.id)}, ${prediction}\n\nВам выпало **${context.config.timelyReward} монет** и **${context.config.timelySnowballs} снежка** | Возвращайтесь через **${context.config.timelyCooldownHours} часов**.`,
+          description: `${mentionUser(interaction.user.id)}, ${prediction}\n\nВам выпало **${reward} монет** и **${context.config.timelySnowballs} снежка** | Возвращайтесь через **${context.config.timelyCooldownHours} часов**.${streakLine}`,
           color: COLORS.economy,
           thumbnail: compactThumbnail(interaction.user)
         }),
