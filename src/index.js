@@ -83,7 +83,7 @@ async function main() {
 
       if (newLevel > prevLevel) {
         const levelUpMsg = panel({
-          title: 'Новый уровень!',
+          title: '🎉 Новый уровень!',
           description: `${mentionUser(message.author.id)} достиг **${newLevel} уровня**!`,
           color: COLORS.success
         });
@@ -94,7 +94,7 @@ async function main() {
     const newAchievements = checkAchievements(profile);
     if (newAchievements.length > 0) {
       const achievementMsg = panel({
-        title: 'Новая ачивка!',
+        title: '🏆 Новая ачивка!',
         description: `${mentionUser(message.author.id)} получил: **${newAchievements.join(', ')}**`,
         color: COLORS.warning
       });
@@ -130,7 +130,7 @@ async function main() {
               const ch = interaction.channel;
               if (ch?.isTextBased()) {
                 ch.send(componentPayload(panel({
-                  title: 'Новая ачивка!',
+                  title: '🏆 Новая ачивка!',
                   description: `${mentionUser(interaction.user.id)} получил: **${earned.join(', ')}**`,
                   color: COLORS.warning
                 }))).catch(() => null);

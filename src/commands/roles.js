@@ -191,16 +191,16 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: 'Посмотреть информацию о личной роли',
-          description: `**Роль:** ${role}\n**Владелец:** ${mentionUser(target.id)}\n**Создана:** ${profile.roleCreatedAt ? formatDateTime(profile.roleCreatedAt) : 'неизвестно'}`,
+          title: '🎨 Личная роль',
+          description: `**Роль:** ${role}\n**👑 Владелец:** ${mentionUser(target.id)}\n**📅 Создана:** ${profile.roleCreatedAt ? formatDateTime(profile.roleCreatedAt) : 'неизвестно'}`,
           color: role.color || COLORS.primary,
           thumbnail: target.displayAvatarURL({ size: 256 }),
           fields: [
-            { name: 'Осталось до оплаты', value: formatDuration(expiresAt - Date.now()) },
-            { name: 'Продается', value: formatCoins(profile.rolePrice || 500) },
-            { name: 'Участников', value: String(membersWithRole) },
-            { name: 'Куплена раз', value: String(profile.rolePurchases || 0) },
-            { name: 'Статус магазина', value: profile.roleForSale === false ? 'скрыта' : 'продается' }
+            { name: '⏳ До оплаты', value: formatDuration(expiresAt - Date.now()) },
+            { name: '🪙 Цена', value: formatCoins(profile.rolePrice || 500) },
+            { name: '👥 Участников', value: String(membersWithRole) },
+            { name: '🛒 Покупок', value: String(profile.rolePurchases || 0) },
+            { name: '🏪 Магазин', value: profile.roleForSale === false ? 'скрыта' : 'продается' }
           ]
         })
       );

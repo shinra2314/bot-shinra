@@ -25,10 +25,10 @@ function requireGuild(interaction) {
 
 function duelPanel(duel) {
   return panel({
-    title: 'Дуэль на монеты',
-    description: `${mentionUser(duel.challengerId)} вызвал ${mentionUser(duel.targetId)} на дуэль за **${formatCoins(duel.amount)}**.`,
+    title: '⚔️ Дуэль на монеты',
+    description: `${mentionUser(duel.challengerId)} вызвал ${mentionUser(duel.targetId)} на дуэль за 🪙 **${formatCoins(duel.amount)}**.`,
     color: COLORS.warning,
-    footer: 'У цели есть 5 минут, чтобы принять вызов.',
+    footer: '⏱️ У цели есть 5 минут, чтобы принять вызов.',
     actions: [
       button(`duel:accept:${duel.id}`, 'Принять', ButtonStyle.Success),
       button(`duel:decline:${duel.id}`, 'Отклонить', ButtonStyle.Danger)
@@ -83,7 +83,7 @@ const commands = [
         return reply(
           interaction,
           panel({
-            title: win ? 'Монетка: победа' : 'Монетка: проигрыш',
+            title: win ? '🌟 Монетка: победа!' : '💨 Монетка: проигрыш',
             description: `Ты выбрал **${guess === 'heads' ? 'Орел' : 'Решка'}**, выпало **${result === 'heads' ? 'Орел' : 'Решка'}**.`,
             color: win ? COLORS.success : COLORS.danger,
             fields: [
@@ -103,7 +103,7 @@ const commands = [
         return reply(
           interaction,
           panel({
-            title: win ? 'Монетка: угадал' : 'Монетка: не угадал',
+            title: win ? '🌟 Угадал!' : '💨 Не угадал',
             description: `Ты выбрал **${guess === 'heads' ? 'Орел' : 'Решка'}**, выпало **${side}**.`,
             color: win ? COLORS.success : COLORS.warning
           })
@@ -113,7 +113,7 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: 'Монетка',
+          title: '🪙 Монетка',
           description: `Выпало: **${side}**.`,
           color: COLORS.warning
         })
@@ -179,7 +179,7 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: 'Реакция',
+          title: '💌 Реакция',
           description: line,
           color: COLORS.games,
           footer: target ? 'Реакция отправлена без пинга.' : 'Можно указать пользователя вторым аргументом.'
@@ -210,10 +210,10 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: 'Снежок',
-          description: `${mentionUser(interaction.user.id)} бросил снежок в ${mentionUser(target.id)}.`,
+          title: '❄️ Снежок!',
+          description: `${mentionUser(interaction.user.id)} бросил снежок в ${mentionUser(target.id)}! 🎯`,
           color: COLORS.info,
-          footer: `Осталось снежков: ${profile.snowballs}`
+          footer: `❄️ Осталось: ${profile.snowballs}`
         })
       );
     }
@@ -252,7 +252,7 @@ async function handleComponent(interaction, context) {
     await update(
       interaction,
       panel({
-        title: 'Дуэль отменена',
+        title: '⚔️ Дуэль отменена',
         description: `${mentionUser(interaction.user.id)} отменил дуэль на **${formatCoins(duel.amount)}**.`,
         color: COLORS.warning
       })
@@ -293,8 +293,8 @@ async function handleComponent(interaction, context) {
   await update(
     interaction,
     successPanel(
-      `${mentionUser(winner.id)} победил и забрал **${formatCoins(duel.amount)}** у ${mentionUser(loser.id)}.`,
-      'Дуэль завершена'
+      `🏆 ${mentionUser(winner.id)} победил и забрал 🪙 **${formatCoins(duel.amount)}** у ${mentionUser(loser.id)}.`,
+      '⚔️ Дуэль завершена'
     )
   );
   return true;

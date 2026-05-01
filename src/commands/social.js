@@ -45,11 +45,11 @@ const commands = [
         : `${mentionUser(interaction.user.id)} дал репутацию ${mentionUser(target.id)}.`;
 
       return reply(interaction, panel({
-        title: 'Репутация +1',
+        title: '⭐ Репутация +1',
         description: desc,
         color: COLORS.success,
         fields: [
-          { name: 'Репутация', value: `${targetProfile.reputation}` }
+          { name: '⭐ Репутация', value: `${targetProfile.reputation}` }
         ]
       }));
     }
@@ -79,20 +79,20 @@ const commands = [
       const mostVoice = users.slice().sort((a, b) => (b.voiceMinutes || 0) - (a.voiceMinutes || 0))[0];
 
       return reply(interaction, panel({
-        title: 'Статистика сервера',
-        description: `Всего в базе: **${users.length}** пользователей, **${clans.length}** кланов.`,
+        title: '📊 Статистика сервера',
+        description: `👥 **${users.length}** пользователей • 🏰 **${clans.length}** кланов`,
         color: COLORS.info,
         fields: [
-          { name: 'Монет в обороте', value: formatCoins(totalBalance) },
-          { name: 'Всего голосового онлайна', value: formatMinutes(totalVoice) },
-          { name: 'Всего XP', value: String(totalXp) },
-          { name: 'Сообщений отслежено', value: String(totalMessages) },
-          { name: 'Всего репутации', value: String(totalRep) },
-          { name: 'Средний уровень', value: avgLevel },
-          { name: 'Самый богатый', value: richest ? `${mentionUser(richest.id)} — ${formatCoins(richest.balance)}` : 'нет данных' },
-          { name: 'Больше всего войса', value: mostVoice ? `${mentionUser(mostVoice.id)} — ${formatMinutes(mostVoice.voiceMinutes)}` : 'нет данных' },
-          { name: 'Активных лотов', value: String(guild.marketListings.filter((i) => i.status === 'active').length) },
-          { name: 'Ивентов', value: String(guild.events.length) }
+          { name: '🪙 Монет в обороте', value: formatCoins(totalBalance) },
+          { name: '🎙️ Голосовой онлайн', value: formatMinutes(totalVoice) },
+          { name: '✨ Всего XP', value: String(totalXp) },
+          { name: '💬 Сообщений', value: String(totalMessages) },
+          { name: '⭐ Репутация', value: String(totalRep) },
+          { name: '📊 Ср. уровень', value: avgLevel },
+          { name: '💰 Богач', value: richest ? `${mentionUser(richest.id)} — ${formatCoins(richest.balance)}` : 'нет данных' },
+          { name: '🎙️ Голосовой рекорд', value: mostVoice ? `${mentionUser(mostVoice.id)} — ${formatMinutes(mostVoice.voiceMinutes)}` : 'нет данных' },
+          { name: '🛍️ Лоты', value: String(guild.marketListings.filter((i) => i.status === 'active').length) },
+          { name: '🎮 Ивенты', value: String(guild.events.length) }
         ]
       }));
     }

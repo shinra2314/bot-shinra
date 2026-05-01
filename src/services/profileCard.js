@@ -151,26 +151,30 @@ async function renderProfileCard({ user, profile, clan, liveMinutes = 0, rank = 
     <text x="112" y="451" class="muted">${escapeXml(title)}</text>
     <text x="444" y="439" class="value">${level.level}</text>
 
-    <rect x="84" y="520" width="412" height="138" rx="18" class="soft"/>
-    <text x="110" y="558" class="label">Баланс</text>
-    <text x="110" y="604" class="value">${escapeXml(formatCoins(profile.balance).replace(' мон.', ''))}</text>
-    <text x="110" y="635" class="muted">coins</text>
-    <text x="316" y="558" class="label">Ранг</text>
-    <text x="316" y="604" class="value">${escapeXml(rank)}</text>
+    <rect x="84" y="490" width="412" height="52" rx="12" class="soft"/>
+    <rect x="88" y="494" width="${Math.round(404 * (level.needed > 0 ? level.progress / level.needed : 0))}" height="44" rx="10" fill="url(#accent)" opacity="0.7"/>
+    <text x="290" y="524" class="muted" text-anchor="middle" fill="rgba(255,255,255,.85)">${level.progress}/${level.needed} XP</text>
 
-    <rect x="84" y="682" width="412" height="132" rx="18" class="soft"/>
-    <text x="110" y="722" class="label">Любимый бейдж</text>
-    <text x="110" y="770" class="value">${escapeXml(favoriteBadge)}</text>
-    <text x="440" y="768" class="value" fill="${color}">${escapeXml(icon)}</text>
+    <rect x="84" y="562" width="200" height="108" rx="18" class="soft"/>
+    <text x="110" y="598" class="label">🪙 Баланс</text>
+    <text x="110" y="644" class="value">${escapeXml(formatCoins(profile.balance).replace(' мон.', ''))}</text>
+    <rect x="296" y="562" width="200" height="108" rx="18" class="soft"/>
+    <text x="316" y="598" class="label">📊 Ранг</text>
+    <text x="316" y="644" class="value">${escapeXml(rank)}</text>
+
+    <rect x="84" y="690" width="412" height="124" rx="18" class="soft"/>
+    <text x="110" y="730" class="label">⭐ Бейдж</text>
+    <text x="110" y="778" class="value">${escapeXml(favoriteBadge)}</text>
+    <text x="440" y="776" class="value" fill="${color}">${escapeXml(icon)}</text>
 
     <rect x="578" y="54" width="440" height="328" rx="28" class="panel"/>
     <rect x="606" y="82" width="386" height="132" rx="18" class="soft"/>
     <circle cx="676" cy="148" r="52" fill="rgba(255,255,255,.035)" stroke="rgba(255,255,255,.13)" stroke-width="4"/>
-    <text x="752" y="136" class="label">Клан</text>
+    <text x="752" y="136" class="label">🏰 Клан</text>
     <text x="752" y="178" class="value">${escapeXml(shortText(clan?.name || 'Нет клана', 17))}</text>
     <rect x="606" y="242" width="386" height="112" rx="18" class="soft"/>
     <circle cx="676" cy="298" r="42" fill="rgba(255,255,255,.035)" stroke="${color}" stroke-opacity=".45" stroke-width="4"/>
-    <text x="752" y="290" class="label">Репутация</text>
+    <text x="752" y="290" class="label">⭐ Репутация</text>
     <text x="752" y="330" class="value">${profile.reputation || 0}</text>
 
     <rect x="1046" y="54" width="500" height="328" rx="28" class="panel"/>
@@ -183,23 +187,23 @@ async function renderProfileCard({ user, profile, clan, liveMinutes = 0, rank = 
 
     <rect x="578" y="408" width="968" height="438" rx="28" class="panel"/>
     <rect x="606" y="436" width="290" height="170" rx="18" class="soft"/>
-    <text x="640" y="500" class="label">Голосовой онлайн</text>
+    <text x="640" y="500" class="label">🎙️ Голосовой</text>
     <text x="640" y="552" class="value">${escapeXml(formatMinutes(profile.voiceMinutes + liveMinutes))}</text>
     <rect x="922" y="436" width="290" height="170" rx="18" class="soft"/>
-    <text x="956" y="500" class="label">Любовный профиль</text>
+    <text x="956" y="500" class="label">❤️ Пара</text>
     <text x="956" y="552" class="value">${profile.lovePartnerId ? 'Активен' : 'Нет пары'}</text>
     <rect x="1240" y="436" width="278" height="112" rx="18" class="soft"/>
-    <text x="1306" y="482" class="label">Сезон</text>
+    <text x="1306" y="482" class="label">🏅 Сезон</text>
     <text x="1306" y="520" class="small">${escapeXml(shortText(profile.seasonRank, 14))}</text>
 
     <rect x="606" y="634" width="290" height="170" rx="18" class="soft"/>
-    <text x="640" y="694" class="label">Любимые роли</text>
+    <text x="640" y="694" class="label">🎨 Роли</text>
     <text x="640" y="746" class="small">${escapeXml(shortText(favoriteRoles, 24))}</text>
     <rect x="922" y="634" width="290" height="170" rx="18" class="soft"/>
-    <text x="956" y="694" class="label">Уровень XP</text>
+    <text x="956" y="694" class="label">✨ Опыт</text>
     <text x="956" y="746" class="value">${level.xp}</text>
     <rect x="1240" y="582" width="278" height="222" rx="18" class="soft"/>
-    <text x="1272" y="630" class="label">Достижения</text>
+    <text x="1272" y="630" class="label">🏆 Достижения</text>
     ${achievements.map((line, index) => `<text x="1272" y="${680 + index * 42}" class="small">${escapeXml(shortText(line, 16))}</text>`).join('')}
   </svg>`;
 

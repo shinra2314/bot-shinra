@@ -47,7 +47,7 @@ const commands = [
       if (subcommand === 'репорты') {
         const reports = guild.reports.filter((report) => report.status === 'ожидает проверки').slice(0, 10);
         return reply(interaction, panel({
-          title: 'Очередь жалоб',
+          title: '📩 Очередь жалоб',
           description: reports.length ? 'Репорты ожидают проверки.' : 'Очередь пустая.',
           color: COLORS.danger,
           lines: reports.map(reportLine)
@@ -71,7 +71,7 @@ const commands = [
       const target = interaction.options.getUser('user', true);
       const history = context.store.moderationHistoryFor(interaction.guildId, target.id, 10);
       return reply(interaction, panel({
-        title: `История наказаний — ${target.username}`,
+        title: `📜 История наказаний — ${target.username}`,
         description: mentionUser(target.id),
         color: COLORS.danger,
         lines: history.length
@@ -190,7 +190,7 @@ async function handleComponent(interaction, context) {
 
   await context.store.save();
   await update(interaction, panel({
-    title: `Жалоба ${report.id}`,
+    title: `📋 Жалоба ${report.id}`,
     description: `На пользователя: ${mentionUser(report.targetId)}\nОтправил: ${mentionUser(report.reporterId)}\nСтатус: **${report.status}**`,
     color: COLORS.danger,
     fields: [

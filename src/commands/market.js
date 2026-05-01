@@ -58,8 +58,8 @@ const commands = [
 
       if (subcommand === 'список') {
         return reply(interaction, panel({
-          title: 'Маркет Onix',
-          description: `Комиссия с продажи: **${Math.round(COMMISSION * 100)}%**.`,
+          title: '🛍️ Маркет Onix',
+          description: `💸 Комиссия: **${Math.round(COMMISSION * 100)}%** с продажи.`,
           color: COLORS.economy,
           lines: listingRows(context.store.activeMarketListings(interaction.guildId))
         }));
@@ -107,7 +107,7 @@ const commands = [
       await context.store.save();
 
       return reply(interaction, panel({
-        title: 'Покупка на маркете',
+        title: '🛒 Покупка',
         description: `${mentionUser(interaction.user.id)} купил **${listing.name}** за **${formatCoins(listing.price)}**.\nКомиссия экономики: **${formatCoins(fee)}**.`,
         color: COLORS.economy
       }));
@@ -151,7 +151,7 @@ const commands = [
           `**${auction.id}** — ${auction.name}\nТекущая ставка: ${formatCoins(auction.currentBid || auction.startPrice)} • до конца ${formatDuration(auction.endsAt - Date.now())}`
         );
         return reply(interaction, panel({
-          title: 'Аукционы Onix',
+          title: '🔨 Аукционы Onix',
           description: 'Ставки блокируют монеты только логически, списание происходит при завершении вручную в следующем этапе.',
           color: COLORS.economy,
           lines: rows.length ? rows : ['Активных аукционов нет.']
@@ -186,7 +186,7 @@ const commands = [
       await context.store.save();
 
       return reply(interaction, panel({
-        title: 'Новая ставка',
+        title: '🔨 Новая ставка',
         description: `${mentionUser(interaction.user.id)} поставил **${formatCoins(amount)}** на **${auction.name}**.`,
         color: COLORS.economy,
         footer: `До конца: ${formatDuration(auction.endsAt - Date.now())}`

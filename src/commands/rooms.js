@@ -15,13 +15,13 @@ function findRoom(context, interaction, ownerId = interaction.user.id) {
 
 function roomPanel(roomData) {
   return panel({
-    title: 'Панель личной комнаты',
-    description: `Комната: ${roomData.channel ? `<#${roomData.channel.id}>` : 'не найдена'}\nВладелец: ${mentionUser(roomData.room.ownerId)}`,
+    title: '🏠 Личная комната',
+    description: `🔊 ${roomData.channel ? `<#${roomData.channel.id}>` : 'не найдена'}\n👑 ${mentionUser(roomData.room.ownerId)}`,
     color: COLORS.info,
     fields: [
-      { name: 'Закрыта', value: roomData.room.locked ? 'да' : 'нет' },
-      { name: 'Скрыта', value: roomData.room.hidden ? 'да' : 'нет' },
-      { name: 'Лимит', value: String(roomData.channel?.userLimit || 'без лимита') }
+      { name: '🔒 Закрыта', value: roomData.room.locked ? 'да' : 'нет' },
+      { name: '👻 Скрыта', value: roomData.room.hidden ? 'да' : 'нет' },
+      { name: '👥 Лимит', value: String(roomData.channel?.userLimit || 'без лимита') }
     ],
     actions: [
       button(`room:lock:${roomData.channelId}`, 'Закрыть', ButtonStyle.Secondary, roomData.room.locked),

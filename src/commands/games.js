@@ -76,7 +76,7 @@ const commands = [
         return reply(
           interaction,
           panel({
-            title: `Ивенты: ${displayName(target)}`,
+            title: `🎮 Ивенты: ${displayName(target)}`,
             description: mentionUser(target.id),
             color: COLORS.games,
             fields: [
@@ -103,7 +103,7 @@ const commands = [
         await context.store.save();
 
         return reply(interaction, panel({
-          title: `Ивент: ${event.name}`,
+          title: `🌟 Ивент: ${event.name}`,
           description: `Начало: **${event.startsAtText}**\nУчастников: **0/${event.maxParticipants}**\nНаграда: **${event.rewardText}**\nСтатус: **${event.status}**`,
           color: COLORS.games,
           footer: `ID ивента: ${event.id}`
@@ -124,7 +124,7 @@ const commands = [
         await context.store.save();
 
         return reply(interaction, panel({
-          title: 'Запись на ивент',
+          title: '🎫 Запись на ивент',
           description: `${mentionUser(interaction.user.id)} записался на **${event.name}**.\nУчастников: **${event.participants.length}/${event.maxParticipants}**.`,
           color: COLORS.games
         }));
@@ -135,7 +135,7 @@ const commands = [
           `**${event.name}** (\`${event.id}\`)\nНачало: ${event.startsAtText} • Участников: ${event.participants.length}/${event.maxParticipants}\nНаграда: ${event.rewardText} • ${event.status}`
         );
         return reply(interaction, panel({
-          title: 'Ивент-центр',
+          title: '🎮 Ивент-центр',
           description: 'Активные ивенты сервера.',
           color: COLORS.games,
           lines: rows.length ? rows : ['Активных ивентов пока нет.']
@@ -146,7 +146,7 @@ const commands = [
         const rows = context.store.topUsers(interaction.guildId, (user) => user.eventPoints || 0, 10)
           .map((user, index) => `**${index + 1}.** ${mentionUser(user.id)} — ${user.eventPoints || 0} очков`);
         return reply(interaction, panel({
-          title: 'Лидерборд ивентов',
+          title: '🏆 Лидерборд ивентов',
           description: 'Топ участников по очкам ивентов.',
           color: COLORS.games,
           lines: rows.length ? rows : ['Пока нет очков ивентов.']
@@ -180,7 +180,7 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: 'Награды выданы',
+          title: '🎁 Награды выданы',
           description: `Ивент **${event.name}** завершён.\nКаждый участник получил **${formatCoins(coins)}**.`,
           color: COLORS.games,
         })
@@ -231,7 +231,7 @@ const commands = [
         return reply(
           interaction,
           panel({
-            title: `Мафия: ${displayName(target)}`,
+            title: `🕶️ Мафия: ${displayName(target)}`,
             description: mentionUser(target.id),
             color: COLORS.games,
             fields: [
@@ -253,7 +253,7 @@ const commands = [
         return reply(
           interaction,
           panel({
-            title: sort === 'mvp' ? 'Топ мафии по MVP' : 'Топ мафии по рейтингу',
+            title: sort === 'mvp' ? '🏆 Топ мафии по MVP' : '🏆 Топ мафии по рейтингу',
             description: rows.length ? 'Лучшие игроки мафии на сервере.' : 'Пока нет игроков в рейтинге.',
             color: COLORS.games,
             lines: rows.length ? rows : ['Нет данных.']
@@ -269,7 +269,7 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: `История мафии: ${displayName(target)}`,
+          title: `📜 История мафии: ${displayName(target)}`,
           description: mentionUser(target.id),
           color: COLORS.games,
           lines: history.length
@@ -300,7 +300,7 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: `Клозы: ${displayName(target)}`,
+          title: `🎯 Клозы: ${displayName(target)}`,
           description: mentionUser(target.id),
           color: COLORS.games,
           fields: [

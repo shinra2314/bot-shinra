@@ -22,7 +22,7 @@ const {
 const HELP_CATEGORIES = [
   {
     id: 'main',
-    label: 'Основные',
+    label: '📌 Основные',
     description: 'Жалобы, профили, аватарки и онлайн',
     commands: [
       ['`/report`', 'отправить жалобу на пользователя'],
@@ -36,7 +36,7 @@ const HELP_CATEGORIES = [
   },
   {
     id: 'games',
-    label: 'Игры',
+    label: '🎮 Игры',
     description: 'Ивенты, мафия и клозы',
     commands: [
       ['`/event статистика`', 'статистика ивентов'],
@@ -53,7 +53,7 @@ const HELP_CATEGORIES = [
   },
   {
     id: 'tops',
-    label: 'Различные топы',
+    label: '🏆 Топы',
     description: 'Баланс, онлайн, уровни, комнаты и кланы',
     commands: [
       ['`/top баланс`', 'топ по балансу'],
@@ -69,7 +69,7 @@ const HELP_CATEGORIES = [
   },
   {
     id: 'economy',
-    label: 'Экономика',
+    label: '💰 Экономика',
     description: 'Баланс, награды, магазин, кейсы',
     commands: [
       ['`/balance`', 'посмотреть баланс'],
@@ -85,7 +85,7 @@ const HELP_CATEGORIES = [
   },
   {
     id: 'roles',
-    label: 'Личные роли',
+    label: '🎨 Личные роли',
     description: 'Создание и управление личной ролью',
     commands: [
       ['`/role управление`', 'управление личной ролью'],
@@ -95,7 +95,7 @@ const HELP_CATEGORIES = [
   },
   {
     id: 'clans',
-    label: 'Кланы',
+    label: '🏰 Кланы',
     description: 'Профиль, онлайн и выход из клана',
     commands: [
       ['`/clan профиль`', 'профиль клана'],
@@ -114,7 +114,7 @@ const HELP_CATEGORIES = [
   },
   {
     id: 'market',
-    label: 'Маркет',
+    label: '🛍️ Маркет',
     description: 'Рынок, аукционы и обмен предметами',
     commands: [
       ['`/market список`', 'активные лоты'],
@@ -127,7 +127,7 @@ const HELP_CATEGORIES = [
   },
   {
     id: 'moderation',
-    label: 'Модерация',
+    label: '🛡️ Модерация',
     description: 'Репорты, наказания, апелляции и тикеты',
     commands: [
       ['`/mod репорты`', 'очередь жалоб'],
@@ -139,7 +139,7 @@ const HELP_CATEGORIES = [
   },
   {
     id: 'rooms',
-    label: 'Комнаты',
+    label: '🏠 Комнаты',
     description: 'Временные голосовые комнаты',
     commands: [
       ['`/room панель`', 'панель управления'],
@@ -152,7 +152,7 @@ const HELP_CATEGORIES = [
   },
   {
     id: 'music',
-    label: 'Музыка',
+    label: '🎵 Музыка',
     description: 'Очередь, громкость и управление',
     commands: [
       ['`/play`', 'включить песню'],
@@ -165,7 +165,7 @@ const HELP_CATEGORIES = [
   },
   {
     id: 'fun',
-    label: 'Развлечения',
+    label: '🎲 Развлечения',
     description: 'Монетка, дуэли, реакции',
     commands: [
       ['`/coinflip`', 'подбросить монетку'],
@@ -176,7 +176,7 @@ const HELP_CATEGORIES = [
   },
   {
     id: 'social',
-    label: 'Социальное',
+    label: '👥 Социальное',
     description: 'Репутация, статистика сервера',
     commands: [
       ['`/rep`', 'дать репутацию пользователю'],
@@ -201,7 +201,7 @@ function helpComponents(categoryId = 'main') {
     description: category.description,
     color: COLORS.info,
     lines: category.commands.map(([name, description]) => `${name} — ${description}`),
-    footer: `Всего в каталоге: ${allUniqueCommands()} команд без повторов. Выбери другой раздел ниже.`,
+    footer: `📖 Всего команд: ${allUniqueCommands()} • Выбери раздел ниже`,
     actions: [
       select(
         'help:category',
@@ -269,7 +269,7 @@ const commands = [
       await context.store.save();
 
       const reportView = panel({
-        title: 'Новая жалоба',
+        title: '🚨 Новая жалоба',
         description: `${mentionUser(interaction.user.id)} пожаловался на ${mentionUser(target.id)}`,
         color: COLORS.danger,
         fields: [
@@ -300,7 +300,7 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: 'Отправить жалобу',
+          title: '📬 Жалоба отправлена',
           description: `${mentionUser(interaction.user.id)}, Вы успешно отправили жалобу на пользователя ${mentionUser(target.id)}.\n**Ожидайте ответа от модерации сервера.**`,
           color: COLORS.danger,
           thumbnail: target.displayAvatarURL({ size: 256 }),
@@ -350,14 +350,14 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: `Голосовой онлайн: ${displayName(target)}`,
+          title: `🎙️ Голосовой онлайн: ${displayName(target)}`,
           description: `${mentionUser(target.id)}`,
           thumbnail: target.displayAvatarURL({ size: 256 }),
           color: COLORS.info,
           fields: [
-            { name: 'За сутки', value: formatMinutes(dayMinutes + liveMinutes) },
-            { name: 'За всё время', value: formatMinutes(totalMinutes) },
-            { name: 'Место в топе', value: rank }
+            { name: '📅 За сутки', value: formatMinutes(dayMinutes + liveMinutes) },
+            { name: '📊 За всё время', value: formatMinutes(totalMinutes) },
+            { name: '🏅 Место в топе', value: rank }
           ]
         })
       );
@@ -374,7 +374,7 @@ const commands = [
       return reply(
         interaction,
         mediaPanel({
-          title: `Аватар: ${displayName(target)}`,
+          title: `🖼️ Аватар: ${displayName(target)}`,
           description: `${mentionUser(target.id)}`,
           imageUrl: url,
           color: COLORS.primary,
@@ -404,7 +404,7 @@ const commands = [
       return reply(
         interaction,
         mediaPanel({
-          title: `Баннер: ${displayName(fetched)}`,
+          title: `🎨 Баннер: ${displayName(fetched)}`,
           description: `${mentionUser(fetched.id)}`,
           imageUrl: url,
           color: COLORS.primary,

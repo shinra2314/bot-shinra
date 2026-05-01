@@ -117,11 +117,12 @@ function caseLabel(type) {
 }
 
 function renderTransaction(transaction, userId) {
-  const direction = transaction.toId === userId ? '+' : '-';
+  const isIncome = transaction.toId === userId;
+  const arrow = isIncome ? '🟢 +' : '🔴 -';
   const peer = transaction.fromId === userId ? transaction.toId : transaction.fromId;
-  const peerText = peer ? `, участник: ${mentionUser(peer)}` : '';
+  const peerText = peer ? ` • ${mentionUser(peer)}` : '';
   const label = TRANSACTION_LABELS[transaction.note] || transaction.note || transaction.type;
-  return `**${direction}${transaction.amount}** — ${formatDateTime(transaction.createdAt)}\n${label}${peerText}`;
+  return `${arrow}**${transaction.amount}** — ${label}${peerText}\n-# ${formatDateTime(transaction.createdAt)}`;
 }
 
 function remainingText(ms) {
@@ -140,7 +141,7 @@ function transactionsPanel(context, guildId, target, page = 0) {
   const visible = transactions.slice(safePage * perPage, safePage * perPage + perPage);
 
   return panel({
-    title: `История транзакций — ${displayName(target)}`,
+    title: `📜 История транзакций — ${displayName(target)}`,
     description: visible.length ? null : 'История транзакций пока пустая.',
     color: COLORS.economy,
     thumbnail: compactThumbnail(target),
@@ -180,8 +181,8 @@ function roleShopPanel(context, interaction, page = 0) {
     : [];
 
   return panel({
-    title: 'Магазин личных ролей',
-    description: `Ваш баланс: **${formatCoins(context.store.ensureUser(interaction.guildId, interaction.user).balance)}**`,
+    title: '🛍️ Магазин личных ролей',
+    description: `💰 Ваш баланс: **${formatCoins(context.store.ensureUser(interaction.guildId, interaction.user).balance)}**`,
     color: COLORS.economy,
     thumbnail: interaction.user.displayAvatarURL({ size: 256 }),
     lines,
@@ -197,7 +198,7 @@ function roleShopPanel(context, interaction, page = 0) {
 
 function inventoryPrompt(user) {
   return panel({
-    title: 'Инвентарь пользователя',
+    title: '🎒 Инвентарь',
     description: `${mentionUser(user.id)}, какой инвентарь Вы хотите посмотреть?`,
     color: COLORS.economy,
     thumbnail: compactThumbnail(user),
@@ -212,32 +213,32 @@ function inventoryPrompt(user) {
 
 function inventoryView(context, guildId, user, profile, view) {
   const titles = {
-    roles: 'Личные роли',
-    rooms: 'Личные комнаты',
-    items: 'Предметы'
+    roles: '🎨 Личные роли',
+    rooms: '🏠 Личные комнаты',
+    items: '🎒 Предметы'
   };
 
   const lines = {
     roles: [
-      `**Своя роль:** ${profile.personalRoleId ? `<@&${profile.personalRoleId}>` : 'нет'}`,
-      `**Купленные роли:** ${profile.purchasedRoles?.length ? profile.purchasedRoles.map((id) => `<@&${id}>`).join(', ') : 'нет'}`,
-      `**Купоны личной роли:** ${profile.rolePasses || 0}`
+      `🎭 **Своя роль:** ${profile.personalRoleId ? `<@&${profile.personalRoleId}>` : 'нет'}`,
+      `🛒 **Купленные:** ${profile.purchasedRoles?.length ? profile.purchasedRoles.map((id) => `<@&${id}>`).join(', ') : 'нет'}`,
+      `🎟️ **Купоны:** ${profile.rolePasses || 0}`
     ],
     rooms: [
-      `**Личные комнаты:** ${formatDuration((profile.roomMinutes || 0) * 60000)}`,
-      'Система комнат пока подключена как статистика, без создания голосовых каналов.'
+      `🏠 **Время в комнатах:** ${formatDuration((profile.roomMinutes || 0) * 60000)}`,
+      '-# Система комнат подключена как статистика.'
     ],
     items: [
-      `**Снежки:** ${profile.snowballs || 0}`,
-      `**Обычные кейсы:** ${profile.cases.common || 0}`,
-      `**Редкие кейсы:** ${profile.cases.rare || 0}`,
-      `**Эпические кейсы:** ${profile.cases.epic || 0}`,
-      `**Прочее:** ${profile.inventory?.length ? profile.inventory.join(', ') : 'пусто'}`
+      `❄️ **Снежки:** ${profile.snowballs || 0}`,
+      `🟢 **Обычные кейсы:** ${profile.cases.common || 0}`,
+      `🔵 **Редкие кейсы:** ${profile.cases.rare || 0}`,
+      `🟣 **Эпические кейсы:** ${profile.cases.epic || 0}`,
+      `📦 **Прочее:** ${profile.inventory?.length ? profile.inventory.join(', ') : 'пусто'}`
     ]
   };
 
   return panel({
-    title: titles[view] || 'Инвентарь',
+    title: titles[view] || '🎒 Инвентарь',
     description: mentionUser(user.id),
     color: COLORS.economy,
     thumbnail: compactThumbnail(user),
@@ -268,14 +269,14 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: `Текущий баланс — ${displayName(target)}`,
+          title: `💰 Баланс — ${displayName(target)}`,
           description: mentionUser(target.id),
           thumbnail: compactThumbnail(target),
           color: COLORS.economy,
           fields: [
-            { name: 'Монеты', value: String(profile.balance || 0) },
-            { name: 'Лотусы', value: String(profile.lotuses || 0) },
-            { name: 'Снежки', value: String(profile.snowballs || 0) }
+            { name: '🪙 Монеты', value: formatCoins(profile.balance || 0) },
+            { name: '🌸 Лотусы', value: String(profile.lotuses || 0) },
+            { name: '❄️ Снежки', value: String(profile.snowballs || 0) }
           ]
         })
       );
@@ -295,7 +296,7 @@ const commands = [
         return reply(
           interaction,
           panel({
-            title: 'Предсказание дня',
+            title: '⏳ Предсказание дня',
             description: `${mentionUser(interaction.user.id)}, Вы недавно уже открывали печенье!\nВы сможете открыть следующую только через **${remainingText(availableAt - Date.now())}**.`,
             color: COLORS.warning,
             thumbnail: compactThumbnail(interaction.user)
@@ -334,10 +335,11 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: 'Предсказание дня',
-          description: `${mentionUser(interaction.user.id)}, ${prediction}\n\nВам выпало **${reward} монет** и **${context.config.timelySnowballs} снежка** | Возвращайтесь через **${context.config.timelyCooldownHours} часов**.${streakLine}`,
+          title: '🪄 Предсказание дня',
+          description: `${mentionUser(interaction.user.id)}, ${prediction}\n\n🪙 **+${reward} монет** и ❄️ **+${context.config.timelySnowballs} снежка**${streakLine}`,
           color: COLORS.economy,
-          thumbnail: compactThumbnail(interaction.user)
+          thumbnail: compactThumbnail(interaction.user),
+          footer: `Возвращайтесь через ${context.config.timelyCooldownHours} ч.`
         }),
         { ephemeral: false }
       );
@@ -373,8 +375,8 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: 'Передать валюту',
-          description: `${mentionUser(interaction.user.id)}, Вы успешно перевели **${amount} монет** ${mentionUser(target.id)}`,
+          title: '📤 Перевод',
+          description: `${mentionUser(interaction.user.id)} ➡️ ${mentionUser(target.id)}\n🪙 **${formatCoins(amount)}**`,
           color: COLORS.success,
           thumbnail: compactThumbnail(target)
         })
@@ -469,11 +471,15 @@ const commands = [
         return reply(
           interaction,
           panel({
-            title: `Инвентарь кейсов — ${displayName(target)}`,
+            title: `🎰 Кейсы — ${displayName(target)}`,
             description: mentionUser(target.id),
             thumbnail: compactThumbnail(target),
             color: COLORS.economy,
-            lines: CASE_TYPES.map((item) => `**${item.name}:** ${profile.cases[item.value] || 0}`)
+            lines: CASE_TYPES.map((item) => {
+              const count = profile.cases[item.value] || 0;
+              const emoji = item.value === 'common' ? '🟢' : item.value === 'rare' ? '🔵' : '🟣';
+              return `${emoji} **${item.name}:** ${count}`;
+            })
           }),
           { ephemeral: true }
         );
@@ -489,8 +495,8 @@ const commands = [
           return reply(
             interaction,
             panel({
-              title: 'Открытие кейса',
-              description: `${mentionUser(interaction.user.id)}, Упс, кажется у вас закончились все кейсы.\nПопробуйте вернуться через голосовой активностью или купить кейс в магазине.`,
+              title: '📦 Кейсы закончились',
+              description: `${mentionUser(interaction.user.id)}, у вас не хватает кейсов.\nПопробуйте вернуться через голосовую активность или купите кейс в /shop.`,
               color: COLORS.warning,
               thumbnail: compactThumbnail(interaction.user),
               footer: `Нужно: ${amount}, доступно: ${profile.cases[type]}`
@@ -522,12 +528,12 @@ const commands = [
         return reply(
           interaction,
           panel({
-            title: 'Открытие кейса',
-            description: `${mentionUser(interaction.user.id)}, Вам выпало с **${caseLabel(type)}** кейса:`,
+            title: '🎁 Открытие кейса',
+            description: `${mentionUser(interaction.user.id)}, выпало с **${caseLabel(type)}** кейса:`,
             color: COLORS.economy,
             thumbnail: compactThumbnail(interaction.user),
-            lines: prizeLines.map((line) => `${line}`),
-            footer: `Осталось таких кейсов: ${profile.cases[type]}`
+            lines: prizeLines.map((line) => `✨ ${line}`),
+            footer: `Осталось: ${profile.cases[type]}`
           })
         );
       }
@@ -540,7 +546,7 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: `История кейсов: ${displayName(target)}`,
+          title: `📜 История кейсов — ${displayName(target)}`,
           description: mentionUser(target.id),
           color: COLORS.economy,
           thumbnail: compactThumbnail(target),

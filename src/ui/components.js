@@ -178,7 +178,7 @@ async function update(interaction, components) {
   });
 }
 
-function errorPanel(message, title = 'Не получилось') {
+function errorPanel(message, title = '❌ Не получилось') {
   return panel({
     title,
     description: message,
@@ -186,7 +186,7 @@ function errorPanel(message, title = 'Не получилось') {
   });
 }
 
-function successPanel(message, title = 'Готово') {
+function successPanel(message, title = '✔️ Готово') {
   return panel({
     title,
     description: message,

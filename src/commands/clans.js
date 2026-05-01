@@ -34,16 +34,16 @@ function clanProfilePanel(context, guildId, clan) {
   const activeWar = context.store.activeWarForClan(guildId, clan.id);
 
   return panel({
-    title: `Клан: ${clan.name}`,
+    title: `🏰 ${clan.name}`,
     description: clan.description || 'Описание не указано.',
     color: COLORS.clans,
     fields: [
-      { name: 'Владелец', value: owner },
-      { name: 'Уровень', value: `${clan.level} (${clan.xp} XP)` },
-      { name: 'Банк', value: formatCoins(clan.bank) },
-      { name: 'Рейтинг сезона', value: `${clan.rating || 0} рейтинга • ${clan.seasonPoints || 0} сезонных очков` },
-      { name: 'Участники', value: `${clan.members?.length || 0}\n${previewMembers}` },
-      { name: 'Война', value: activeWar ? `активна до <t:${Math.floor(activeWar.endsAt / 1000)}:R>` : 'нет активной войны' }
+      { name: '👑 Владелец', value: owner },
+      { name: '⭐ Уровень', value: `${clan.level} (${clan.xp} XP)` },
+      { name: '🏦 Банк', value: formatCoins(clan.bank) },
+      { name: '🏅 Рейтинг', value: `${clan.rating || 0} рейтинга • ${clan.seasonPoints || 0} сезонных очков` },
+      { name: '👥 Участники', value: `${clan.members?.length || 0}\n${previewMembers}` },
+      { name: '⚔️ Война', value: activeWar ? `активна до <t:${Math.floor(activeWar.endsAt / 1000)}:R>` : 'нет активной войны' }
     ]
   });
 }
@@ -175,7 +175,7 @@ const commands = [
           .map((clan, index) => `**${index + 1}.** ${clan.name} — ${clan.seasonPoints || 0} SP • уровень ${clan.level}`);
 
         return reply(interaction, panel({
-          title: 'Клановый рейтинг',
+          title: '🏅 Клановый рейтинг',
           description: 'Топ по сезонным очкам и рейтингу.',
           color: COLORS.clans,
           lines: rows.length ? rows : ['Кланы пока не участвуют в рейтинге.']
@@ -190,13 +190,13 @@ const commands = [
 
       if (subcommand === 'банк') {
         return reply(interaction, panel({
-          title: `Банк клана — ${clan.name}`,
-          description: `В банке: **${formatCoins(clan.bank)}**`,
+          title: `🏦 Банк клана — ${clan.name}`,
+          description: `🪙 В банке: **${formatCoins(clan.bank)}**`,
           color: COLORS.clans,
           fields: [
-            { name: 'Уровень', value: String(clan.level) },
-            { name: 'Стоимость улучшения', value: formatCoins(clanLevelCost(clan)) },
-            { name: 'Сезонные очки', value: String(clan.seasonPoints || 0) }
+            { name: '⭐ Уровень', value: String(clan.level) },
+            { name: '💸 Стоимость улучшения', value: formatCoins(clanLevelCost(clan)) },
+            { name: '🏅 Сезонные очки', value: String(clan.seasonPoints || 0) }
           ]
         }));
       }
@@ -223,7 +223,7 @@ const commands = [
 
       if (subcommand === 'задания') {
         return reply(interaction, panel({
-          title: `Клановые задания — ${clan.name}`,
+          title: `📝 Задания — ${clan.name}`,
           description: 'Выполняются всей командой. Награды идут в банк и XP клана.',
           color: COLORS.clans,
           lines: clan.quests.map((quest) =>
@@ -234,8 +234,8 @@ const commands = [
 
       if (subcommand === 'магазин') {
         return reply(interaction, panel({
-          title: `Клановый магазин — ${clan.name}`,
-          description: `Банк: **${formatCoins(clan.bank)}**`,
+          title: `🛍️ Магазин клана — ${clan.name}`,
+          description: `🏦 Банк: **${formatCoins(clan.bank)}**`,
           color: COLORS.clans,
           lines: [
             `**Улучшение клана** — ${formatCoins(clanLevelCost(clan))}`,
@@ -275,7 +275,7 @@ const commands = [
           const war = context.store.createClanWar(interaction.guildId, clan.id, enemy.id);
           await context.store.save();
           return reply(interaction, panel({
-            title: 'Клановая война началась',
+            title: '⚔️ Клановая война началась!',
             description: `**${clan.name}** vs **${enemy.name}**\nСрок: **24 часа**\nОчки: +1 сообщение, +5 за 10 минут войса, +20 победа в дуэли, +50 участие в ивенте.`,
             color: COLORS.danger,
             footer: `ID войны: ${war.id}`
@@ -293,7 +293,7 @@ const commands = [
           const result = context.store.finishClanWar(interaction.guildId, activeWar.id);
           await context.store.save();
           return reply(interaction, panel({
-            title: 'Клановая война завершена',
+            title: '🏁 Клановая война завершена',
             description: `Победитель: **${result.winner.name}**\nНаграда: **500 XP**, **1000 монет в банк**, **50 сезонных очков**.`,
             color: COLORS.clans,
             fields: [
@@ -304,7 +304,7 @@ const commands = [
         }
 
         return reply(interaction, panel({
-          title: 'Статус клановой войны',
+          title: '⚔️ Статус войны',
           description: `**${clan.name}** vs **${enemy?.name || 'Соперник'}**\nДо конца: **${formatDuration(activeWar.endsAt - Date.now())}**`,
           color: COLORS.danger,
           fields: [

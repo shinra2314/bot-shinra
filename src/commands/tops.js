@@ -6,14 +6,20 @@ function requireGuild(interaction) {
   return interaction.guildId ? null : 'Эта команда работает только на сервере.';
 }
 
+const MEDALS = ['🥇', '🥈', '🥉'];
+
+function rankPrefix(index) {
+  return MEDALS[index] || `**${index + 1}.**`;
+}
+
 function userRows(users, valueFormatter) {
   if (!users.length) return ['Нет данных для топа.'];
-  return users.map((user, index) => `**${index + 1}.** ${mentionUser(user.id)} — ${valueFormatter(user)}`);
+  return users.map((user, index) => `${rankPrefix(index)} ${mentionUser(user.id)} — ${valueFormatter(user)}`);
 }
 
 function clanRows(clans, valueFormatter) {
   if (!clans.length) return ['Кланы пока не заведены в базе.'];
-  return clans.map((clan, index) => `**${index + 1}.** ${clan.name} — ${valueFormatter(clan)}`);
+  return clans.map((clan, index) => `${rankPrefix(index)} ${clan.name} — ${valueFormatter(clan)}`);
 }
 
 const commands = [
@@ -95,8 +101,8 @@ const commands = [
       return reply(
         interaction,
         panel({
-          title: config.title,
-          description: 'Первые 10 мест.',
+          title: `🏆 ${config.title}`,
+          description: 'Первые 10 мест сервера',
           color: config.color,
           lines: config.rows()
         })

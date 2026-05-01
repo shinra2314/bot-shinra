@@ -25,18 +25,18 @@ function playerFor(state, guildId) {
   return state.music.get(guildId);
 }
 
-function queuePanel(player, title = 'Музыка') {
+function queuePanel(player, title = '🎵 Музыка') {
   const queueLines = player.queue.slice(0, 5).map((track, index) => `**${index + 1}.** ${track}`);
   return panel({
     title,
     description: player.current
-      ? `Сейчас в контроллере: **${player.current}**`
+      ? `🎶 Сейчас: **${player.current}**`
       : 'Очередь пуста.',
     color: COLORS.music,
     fields: [
-      { name: 'Громкость', value: `${player.volume}%` },
-      { name: 'Пауза', value: player.paused ? 'да' : 'нет' },
-      { name: 'Очередь', value: queueLines.length ? queueLines.join('\n') : 'нет треков' }
+      { name: '🔊 Громкость', value: `${player.volume}%` },
+      { name: '⏸️ Пауза', value: player.paused ? 'да' : 'нет' },
+      { name: '📝 Очередь', value: queueLines.length ? queueLines.join('\n') : 'нет треков' }
     ],
     footer: 'Это UI-контроллер. Для настоящего аудио подключи player в src/commands/music.js.',
     actions: [
