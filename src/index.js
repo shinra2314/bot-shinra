@@ -4,9 +4,13 @@ const { commandMap, handleComponent } = require('./commands');
 const JsonStore = require('./services/jsonStore');
 const createTempRooms = require('./services/tempRooms');
 const createVoiceTracker = require('./services/voiceTracker');
+const createAutomod = require('./services/automod');
+const createLogger = require('./services/logger');
+const createWelcome = require('./services/welcome');
 const { errorPanel, panel, reply, COLORS, componentPayload } = require('./ui/components');
 const { levelFromXp, mentionUser } = require('./utils/format');
 const { checkAchievements } = require('./services/achievements');
+const { checkAutoTitles } = require('./commands/titles');
 
 function validateConfig(config) {
   const warnings = [];
@@ -35,7 +39,14 @@ async function main() {
   await store.load();
 
   const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages]
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildVoiceStates,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.GuildMembers,
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildMessageReactions
+    ]
   });
 
   const state = {
@@ -53,6 +64,12 @@ async function main() {
   };
   const tempRooms = createTempRooms(context);
   context.tempRooms = tempRooms;
+  const automod = createAutomod(context);
+  context.automod = automod;
+  const logger = createLogger(context);
+  context.logger = logger;
+  const welcome = createWelcome(context);
+  context.welcome = welcome;
 
   client.once(Events.ClientReady, async (readyClient) => {
     for (const warning of validateConfig(config)) console.warn(warning);
@@ -70,8 +87,56 @@ async function main() {
     });
   });
 
+  client.on(Events.GuildMemberAdd, async (member) => {
+    try {
+      const isRaid = automod.handleJoin(member);
+      if (isRaid) {
+        await logger.logAutomod(member.guild.id, member.id, { violation: 'возможный рейд', muted: false, warningCount: 0 });
+      }
+      await welcome.handleJoin(member);
+      await logger.logJoin(member);
+    } catch (error) {
+      console.error('GuildMemberAdd error:', error);
+    }
+  });
+
+  client.on(Events.GuildMemberRemove, async (member) => {
+    try {
+      await welcome.handleLeave(member);
+      await logger.logLeave(member);
+    } catch (error) {
+      console.error('GuildMemberRemove error:', error);
+    }
+  });
+
+  client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+    try {
+      await logger.logNickChange(oldMember, newMember);
+    } catch (error) {
+      console.error('GuildMemberUpdate error:', error);
+    }
+  });
+
+  client.on(Events.MessageDelete, async (message) => {
+    try {
+      await logger.logDeletedMessage(message);
+    } catch (error) {
+      console.error('MessageDelete error:', error);
+    }
+  });
+
   client.on(Events.MessageCreate, async (message) => {
     if (!message.guildId || message.author.bot) return;
+
+    const automodResult = await automod.handleMessage(message).catch((error) => {
+      console.error('Automod error:', error);
+      return null;
+    });
+    if (automodResult) {
+      await logger.logAutomod(message.guildId, message.author.id, automodResult);
+      if (automodResult.muted) return;
+    }
+
     const profile = store.ensureUser(message.guildId, message.author);
     const war = store.addClanWarScore(message.guildId, message.author.id, 1, 'message');
 
@@ -101,7 +166,17 @@ async function main() {
       message.channel.send(componentPayload(achievementMsg)).catch(() => null);
     }
 
-    if (war || profile.messageCount % 5 === 0 || newAchievements.length > 0) {
+    const newTitles = checkAutoTitles(profile);
+    if (newTitles.length > 0) {
+      const titleMsg = panel({
+        title: '🏷️ Новый титул!',
+        description: `${mentionUser(message.author.id)} разблокировал: **${newTitles.map((t) => t.name).join(', ')}**`,
+        color: COLORS.primary
+      });
+      message.channel.send(componentPayload(titleMsg)).catch(() => null);
+    }
+
+    if (war || profile.messageCount % 5 === 0 || newAchievements.length > 0 || newTitles.length > 0) {
       await store.save().catch((error) => console.error('Message processing save error:', error));
     }
   });

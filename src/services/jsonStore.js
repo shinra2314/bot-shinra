@@ -167,6 +167,12 @@ class JsonStore {
     this.data.guilds[id].moderationHistory ||= [];
     this.data.guilds[id].tickets ||= [];
     this.data.guilds[id].tempRooms ||= {};
+    this.data.guilds[id].logs ||= [];
+    this.data.guilds[id].automod ||= null;
+    this.data.guilds[id].automodWarnings ||= {};
+    this.data.guilds[id].logSettings ||= null;
+    this.data.guilds[id].welcomeSettings ||= null;
+    this.data.guilds[id].pendingTrades ||= [];
     return this.data.guilds[id];
   }
 
@@ -229,6 +235,12 @@ class JsonStore {
     guild.users[user.id].favoriteRoles ||= [];
     guild.users[user.id].badges ||= ['Onix'];
     guild.users[user.id].achievements ||= [];
+    guild.users[user.id].cards ||= [];
+    guild.users[user.id].albums ||= {};
+    guild.users[user.id].unlockedTitles ||= [];
+    guild.users[user.id].activeTitle ??= null;
+    guild.users[user.id].cosmetics.statuses ||= ['none'];
+    guild.users[user.id].customization.status ||= 'none';
     return guild.users[user.id];
   }
 

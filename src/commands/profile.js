@@ -9,7 +9,8 @@ const CUSTOM_OPTIONS = [
   { option: 'фон', type: 'backgrounds', key: 'background', ownedKey: 'backgrounds' },
   { option: 'значок', type: 'icons', key: 'icon', ownedKey: 'icons' },
   { option: 'титул', type: 'titles', key: 'title', ownedKey: 'titles' },
-  { option: 'бейдж', type: 'badges', key: 'favoriteBadge', ownedKey: 'badges' }
+  { option: 'бейдж', type: 'badges', key: 'favoriteBadge', ownedKey: 'badges' },
+  { option: 'статус', type: 'statuses', key: 'status', ownedKey: 'statuses' }
 ];
 
 function requireGuild(interaction) {
@@ -75,6 +76,9 @@ function addChoiceOptions(subcommand) {
     )
     .addStringOption((option) =>
       option.setName('бейдж').setDescription('Любимый бейдж').addChoices(...choices('badges'))
+    )
+    .addStringOption((option) =>
+      option.setName('статус').setDescription('Эмодзи-статус на карточке').addChoices(...choices('statuses'))
     )
     .addStringOption((option) =>
       option.setName('любимые-роли').setDescription('Любимые роли через запятую').setMaxLength(120)

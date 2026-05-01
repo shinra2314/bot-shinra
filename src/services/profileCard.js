@@ -3,28 +3,46 @@ const { formatCoins, formatMinutes, levelFromXp } = require('../utils/format');
 
 const PROFILE_CATALOG = {
   frames: [
-    { id: 'default', name: 'Onix Classic', price: 0 },
-    { id: 'neon', name: 'Neon Dragon', price: 15000 },
-    { id: 'emerald', name: 'Emerald Pulse', price: 9000 },
-    { id: 'royal', name: 'Royal Violet', price: 12000 }
+    { id: 'default', name: 'Onix Classic', price: 0, effect: 'none' },
+    { id: 'neon', name: 'Neon Dragon', price: 15000, effect: 'neon' },
+    { id: 'emerald', name: 'Emerald Pulse', price: 9000, effect: 'none' },
+    { id: 'royal', name: 'Royal Violet', price: 12000, effect: 'none' },
+    { id: 'fire', name: 'Inferno Frame', price: 20000, effect: 'fire' },
+    { id: 'ice', name: 'Frost Frame', price: 20000, effect: 'ice' },
+    { id: 'lightning', name: 'Thunder Frame', price: 25000, effect: 'lightning' },
+    { id: 'sakura', name: 'Sakura Bloom', price: 18000, effect: 'particles' }
   ],
   colors: [
     { id: 'violet', name: 'Фиолетовый', price: 0, value: '#8b5cf6' },
     { id: 'green', name: 'Зелёный', price: 2500, value: '#4ade80' },
     { id: 'rose', name: 'Розовый', price: 2500, value: '#fb7185' },
-    { id: 'gold', name: 'Золотой', price: 5000, value: '#facc15' }
+    { id: 'gold', name: 'Золотой', price: 5000, value: '#facc15' },
+    { id: 'cyan', name: 'Бирюзовый', price: 4000, value: '#22d3ee' },
+    { id: 'crimson', name: 'Малиновый', price: 4000, value: '#dc2626' },
+    { id: 'silver', name: 'Серебряный', price: 6000, value: '#c0c0c0' },
+    { id: 'rainbow', name: 'Радужный', price: 15000, value: '#ff6b6b' }
   ],
   backgrounds: [
     { id: 'onix', name: 'Onix Night', price: 0 },
     { id: 'matrix', name: 'Matrix Room', price: 7000 },
     { id: 'mafia', name: 'Mafia Night', price: 8000 },
-    { id: 'love', name: 'Love Core', price: 8000 }
+    { id: 'love', name: 'Love Core', price: 8000 },
+    { id: 'galaxy', name: 'Galaxy', price: 12000 },
+    { id: 'sunset', name: 'Sunset Horizon', price: 10000 },
+    { id: 'forest', name: 'Dark Forest', price: 9000 },
+    { id: 'ocean', name: 'Deep Ocean', price: 9000 },
+    { id: 'fire_bg', name: 'Volcano', price: 14000 },
+    { id: 'aurora', name: 'Aurora Borealis', price: 16000 }
   ],
   icons: [
     { id: 'spark', name: 'Искра', price: 0, symbol: '✦' },
     { id: 'crown', name: 'Корона', price: 4000, symbol: '♛' },
     { id: 'star', name: 'Звезда', price: 2500, symbol: '★' },
-    { id: 'shield', name: 'Щит', price: 2500, symbol: '⬟' }
+    { id: 'shield', name: 'Щит', price: 2500, symbol: '⬟' },
+    { id: 'flame', name: 'Пламя', price: 5000, symbol: '🔥' },
+    { id: 'diamond', name: 'Алмаз', price: 6000, symbol: '💎' },
+    { id: 'skull', name: 'Череп', price: 5000, symbol: '💀' },
+    { id: 'heart', name: 'Сердце', price: 3000, symbol: '❤' }
   ],
   titles: [
     { id: 'newbie', name: 'Новичок Onix', price: 0 },
@@ -38,7 +56,21 @@ const PROFILE_CATALOG = {
     { id: 'onix', name: 'Onix', price: 0, symbol: '◆' },
     { id: 'mvp', name: 'MVP', price: 5000, symbol: '★' },
     { id: 'rich', name: 'Rich', price: 5000, symbol: '●' },
-    { id: 'voice', name: 'Voice', price: 5000, symbol: '◉' }
+    { id: 'voice', name: 'Voice', price: 5000, symbol: '◉' },
+    { id: 'fire_badge', name: 'Fire', price: 7000, symbol: '🔥' },
+    { id: 'ice_badge', name: 'Ice', price: 7000, symbol: '❄' },
+    { id: 'legend_badge', name: 'Legend', price: 15000, symbol: '👑' },
+    { id: 'collector_badge', name: 'Collector', price: 8000, symbol: '🃏' }
+  ],
+  statuses: [
+    { id: 'none', name: 'Без статуса', price: 0, emoji: '' },
+    { id: 'gaming', name: 'Играю', price: 1500, emoji: '🎮' },
+    { id: 'chilling', name: 'Чиллю', price: 1500, emoji: '😎' },
+    { id: 'working', name: 'Работаю', price: 1500, emoji: '💼' },
+    { id: 'sleeping', name: 'Сплю', price: 1500, emoji: '😴' },
+    { id: 'love_status', name: 'Влюблён', price: 2000, emoji: '💕' },
+    { id: 'angry', name: 'Злой', price: 2000, emoji: '😡' },
+    { id: 'vip', name: 'VIP', price: 10000, emoji: '👑' }
   ]
 };
 
@@ -77,9 +109,40 @@ function backgroundGradient(backgroundId) {
     onix: ['#07070c', '#121827', '#101012'],
     matrix: ['#04130d', '#101a16', '#06110c'],
     mafia: ['#130609', '#171019', '#0b080d'],
-    love: ['#170510', '#20101a', '#09070d']
+    love: ['#170510', '#20101a', '#09070d'],
+    galaxy: ['#0a0520', '#15103a', '#0d0825'],
+    sunset: ['#1a0a05', '#251510', '#180c08'],
+    forest: ['#030d06', '#0a1a0e', '#051008'],
+    ocean: ['#031220', '#081a2e', '#050e18'],
+    fire_bg: ['#1a0805', '#251008', '#180504'],
+    aurora: ['#050d1a', '#0a1a25', '#081218']
   };
   return gradients[backgroundId] || gradients.onix;
+}
+
+function frameEffectSvg(frameId, color) {
+  const effects = {
+    fire: `
+      <circle cx="289" cy="214" r="160" fill="none" stroke="#ff4500" stroke-width="3" stroke-dasharray="20 15" opacity="0.4"/>
+      <circle cx="289" cy="214" r="170" fill="none" stroke="#ff6b00" stroke-width="2" stroke-dasharray="10 20" opacity="0.25"/>`,
+    ice: `
+      <circle cx="289" cy="214" r="160" fill="none" stroke="#00d4ff" stroke-width="3" stroke-dasharray="8 12" opacity="0.4"/>
+      <circle cx="289" cy="214" r="170" fill="none" stroke="#88eeff" stroke-width="2" stroke-dasharray="4 16" opacity="0.3"/>`,
+    neon: `
+      <circle cx="289" cy="214" r="155" fill="none" stroke="${color}" stroke-width="4" opacity="0.5"/>
+      <circle cx="289" cy="214" r="165" fill="none" stroke="${color}" stroke-width="2" opacity="0.25"/>`,
+    lightning: `
+      <circle cx="289" cy="214" r="160" fill="none" stroke="#ffdd00" stroke-width="3" stroke-dasharray="30 5 5 5" opacity="0.4"/>
+      <circle cx="289" cy="214" r="170" fill="none" stroke="#ffee66" stroke-width="1.5" stroke-dasharray="2 8" opacity="0.35"/>`,
+    particles: `
+      <circle cx="180" cy="130" r="3" fill="${color}" opacity="0.4"/>
+      <circle cx="400" cy="160" r="2.5" fill="${color}" opacity="0.35"/>
+      <circle cx="220" cy="310" r="2" fill="${color}" opacity="0.3"/>
+      <circle cx="380" cy="290" r="3.5" fill="${color}" opacity="0.4"/>
+      <circle cx="150" cy="230" r="2" fill="${color}" opacity="0.25"/>
+      <circle cx="430" cy="220" r="2.5" fill="${color}" opacity="0.3"/>`
+  };
+  return effects[frameId] || '';
 }
 
 function badgeName(profile) {
@@ -104,6 +167,10 @@ async function renderProfileCard({ user, profile, clan, liveMinutes = 0, rank = 
   const favoriteBadge = badgeName(profile);
   const favoriteRoles = profile.favoriteRoles?.slice(0, 3).join(' • ') || 'не выбраны';
   const achievements = achievementLines(profile);
+  const frameItem = findCatalogItem('frames', profile.customization?.frame);
+  const frameEffect = frameEffectSvg(frameItem?.effect, color);
+  const statusItem = findCatalogItem('statuses', profile.customization?.status);
+  const statusText = statusItem?.emoji ? `${statusItem.emoji} ${statusItem.name}` : '';
 
   const svg = `
   <svg width="1600" height="900" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg">
@@ -143,6 +210,8 @@ async function renderProfileCard({ user, profile, clan, liveMinutes = 0, rank = 
     <circle cx="289" cy="214" r="126" fill="rgba(255,255,255,.035)" stroke="rgba(255,255,255,.11)" stroke-width="3"/>
     <circle cx="289" cy="214" r="142" fill="none" stroke="url(#accent)" stroke-width="14" stroke-dasharray="510 180" transform="rotate(-70 289 214)"/>
     ${avatar ? `<clipPath id="avatarClip"><circle cx="289" cy="214" r="108"/></clipPath><image href="${avatar}" x="181" y="106" width="216" height="216" clip-path="url(#avatarClip)"/>` : `<circle cx="289" cy="214" r="108" fill="#20232d"/>`}
+    ${frameEffect}
+    ${statusText ? `<text x="289" y="366" class="muted" text-anchor="middle" fill="${color}">${escapeXml(statusText)}</text>` : ''}
 
     <rect x="100" y="386" width="304" height="82" rx="12" class="soft"/>
     <rect x="417" y="386" width="78" height="82" rx="18" class="soft"/>

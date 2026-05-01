@@ -12,8 +12,13 @@ const admin = require('./admin');
 const music = require('./music');
 const fun = require('./fun');
 const social = require('./social');
+const automod = require('./automod');
+const logs = require('./logs');
+const welcomeCmd = require('./welcome');
+const cards = require('./cards');
+const titles = require('./titles');
 
-const modules = [basic, profile, games, tops, economy, roles, clans, market, moderation, rooms, admin, music, fun, social];
+const modules = [basic, profile, games, tops, economy, roles, clans, market, moderation, rooms, admin, music, fun, social, automod, logs, welcomeCmd, cards, titles];
 const commands = modules.flatMap((module) => module.commands || []);
 
 const seen = new Set();
