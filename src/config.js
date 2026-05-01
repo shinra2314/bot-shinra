@@ -1,0 +1,37 @@
+const path = require('node:path');
+const dotenv = require('dotenv');
+
+const projectRoot = path.resolve(__dirname, '..');
+dotenv.config({ path: path.join(projectRoot, '.env') });
+
+function numberFromEnv(name, fallback) {
+  const value = process.env[name];
+  if (value === undefined || value === '') return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function colorFromEnv(name, fallback) {
+  const value = process.env[name];
+  if (!value) return fallback;
+  const normalized = value.trim().replace(/^#/, '0x');
+  const parsed = Number(normalized);
+  return Number.isInteger(parsed) ? parsed : fallback;
+}
+
+module.exports = {
+  projectRoot,
+  token: process.env.DISCORD_TOKEN,
+  clientId: process.env.DISCORD_CLIENT_ID,
+  guildId: process.env.DISCORD_GUILD_ID || null,
+  reportChannelId: process.env.REPORT_CHANNEL_ID || null,
+  tempRoomTriggerChannelId: process.env.TEMP_ROOM_TRIGGER_CHANNEL_ID || null,
+  tempRoomCategoryId: process.env.TEMP_ROOM_CATEGORY_ID || null,
+  databasePath: path.resolve(projectRoot, process.env.DATABASE_PATH || 'data/database.json'),
+  accentColor: colorFromEnv('ACCENT_COLOR', 0x7C3AED),
+  startBalance: numberFromEnv('START_BALANCE', 500),
+  timelyReward: numberFromEnv('TIMELY_REWARD', 250),
+  timelySnowballs: numberFromEnv('TIMELY_SNOWBALLS', 4),
+  timelyCooldownHours: numberFromEnv('TIMELY_COOLDOWN_HOURS', 12),
+  personalRolePrice: numberFromEnv('PERSONAL_ROLE_PRICE', 5000)
+};
