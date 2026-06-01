@@ -1,0 +1,27 @@
+{
+  "name": "onix-discord-components-v2-bot",
+  "version": "1.0.0",
+  "description": "Discord bot project with slash commands and Components v2 UI.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/shard.js",
+    "start:single": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "deploy": "node src/deploy-commands.js",
+    "check": "node scripts/check-syntax.js",
+    "migrate": "node scripts/migrate-json-to-sqlite.js"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.0",
+    "better-sqlite3": "^11.5.0",
+    "discord.js": "^14.25.1",
+    "dotenv": "^16.4.7"
+  },
+  "optionalDependencies": {
+    "ioredis": "^5.4.1"
+  }
+}
