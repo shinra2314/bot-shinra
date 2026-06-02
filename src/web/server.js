@@ -10,7 +10,7 @@ const express = require('express');
 const { createApiRouter } = require('./api');
 
 const DIST_DIR = path.join(__dirname, '..', '..', 'web', 'dist');
-const PUBLIC_PATHS = new Set(['/relay', '/overview']);
+const PUBLIC_PATHS = new Set(['/overview']);
 
 function onPrimaryShard(client) {
   if (!client.shard) return true;

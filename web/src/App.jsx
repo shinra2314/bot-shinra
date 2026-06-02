@@ -1,25 +1,22 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import { Routes, Route, NavLink } from 'react-router-dom';
 import { api } from './api.js';
 import Overview from './pages/Overview.jsx';
 import Tickets from './pages/Tickets.jsx';
 import TicketDetail from './pages/TicketDetail.jsx';
 import Reports from './pages/Reports.jsx';
 import Composer from './pages/Composer.jsx';
-import Contact from './pages/Contact.jsx';
 
 const NAV = [
   { to: '/', label: 'Обзор', icon: '📊', end: true },
   { to: '/tickets', label: 'Тикеты', icon: '🎫' },
   { to: '/reports', label: 'Жалобы', icon: '🛡️' },
-  { to: '/compose', label: 'Отправить', icon: '✈️' },
-  { to: '/contact', label: 'Обращение', icon: '📬' }
+  { to: '/compose', label: 'Отправить', icon: '✈️' }
 ];
 
 export default function App() {
   const [guilds, setGuilds] = useState([]);
   const [gid, setGid] = useState(() => localStorage.getItem('gid') || '');
-  const location = useLocation();
 
   useEffect(() => {
     api.guilds().then((list) => {
@@ -33,7 +30,6 @@ export default function App() {
   }, [gid]);
 
   const ctx = { guilds, gid };
-  const showGuildPicker = !location.pathname.startsWith('/contact');
 
   return (
     <div className="layout">
@@ -48,7 +44,7 @@ export default function App() {
       </aside>
 
       <main className="main">
-        {showGuildPicker && guilds.length > 1 && (
+        {guilds.length > 1 && (
           <div className="page-head" style={{ marginBottom: 12 }}>
             <span className="muted">Сервер</span>
             <select value={gid} onChange={(e) => setGid(e.target.value)}>
@@ -65,7 +61,6 @@ export default function App() {
           <Route path="/tickets/:id" element={<TicketDetail ctx={ctx} />} />
           <Route path="/reports" element={<Reports ctx={ctx} />} />
           <Route path="/compose" element={<Composer ctx={ctx} />} />
-          <Route path="/contact" element={<Contact />} />
         </Routes>
       </main>
     </div>

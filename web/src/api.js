@@ -29,10 +29,8 @@ export const api = {
   channels: (gid) => request('GET', `/guilds/${gid}/channels`),
   tickets: (gid, status) => request('GET', `/guilds/${gid}/tickets${status ? `?status=${status}` : ''}`),
   ticket: (gid, id) => request('GET', `/guilds/${gid}/tickets/${id}`),
-  createTicket: (gid, payload) => request('POST', `/guilds/${gid}/tickets`, payload),
   patchTicket: (gid, id, payload) => request('PATCH', `/guilds/${gid}/tickets/${id}`, payload),
   replyTicket: (gid, id, payload) => request('POST', `/guilds/${gid}/tickets/${id}/reply`, payload),
   reports: (gid) => request('GET', `/guilds/${gid}/reports`),
-  send: (payload) => request('POST', '/send', payload),
-  relay: (payload) => request('POST', '/relay', payload)
+  send: (payload) => request('POST', '/send', payload)
 };

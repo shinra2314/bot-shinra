@@ -8,7 +8,7 @@ const { sendToChannel, listTextChannels, listGuilds } = require('./botBridge');
 const MAX_MESSAGE_LEN = 2000;
 
 function createApiRouter(context) {
-  const { store, client, config, cache } = context;
+  const { store, client } = context;
   const router = express.Router();
 
   // ---- helpers ----
@@ -85,19 +85,6 @@ function createApiRouter(context) {
     res.json(enrichTicket(req.params.gid, ticket));
   }));
 
-  router.post('/guilds/:gid/tickets', asyncRoute(async (req, res) => {
-    const { userId, topic, targetId } = req.body || {};
-    if (!topic) return res.status(400).json({ error: 'TOPIC_REQUIRED' });
-    const ticket = store.addTicket(req.params.gid, {
-      userId: userId || null,
-      topic: String(topic).slice(0, 200),
-      targetId: targetId || undefined,
-      source: 'web'
-    });
-    await store.save();
-    res.status(201).json(enrichTicket(req.params.gid, ticket));
-  }));
-
   router.patch('/guilds/:gid/tickets/:id', asyncRoute(async (req, res) => {
     const patch = {};
     if (req.body?.status) patch.status = String(req.body.status);
@@ -147,31 +134,6 @@ function createApiRouter(context) {
     const text = String(content).slice(0, MAX_MESSAGE_LEN);
     const result = await sendToChannel(client, channelId, text);
     if (!result.ok) return res.status(400).json({ error: result.error });
-    res.json({ ok: true });
-  }));
-
-  // ---- public relay (/contact) ----
-  router.post('/relay', asyncRoute(async (req, res) => {
-    const channelId = config.webRelayChannelId;
-    if (!channelId) return res.status(503).json({ error: 'RELAY_NOT_CONFIGURED' });
-
-    const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').toString().split(',')[0].trim();
-    const wait = await cache.checkGlobalRate(`web:relay:${ip}`, 3, 60_000);
-    if (wait > 0) return res.status(429).json({ error: 'RATE_LIMITED', retryMs: wait });
-
-    const message = String(req.body?.message || '').slice(0, MAX_MESSAGE_LEN);
-    if (!message) return res.status(400).json({ error: 'MESSAGE_REQUIRED' });
-    const name = String(req.body?.name || 'Аноним').slice(0, 80);
-    const contact = String(req.body?.contact || '').slice(0, 120);
-
-    const lines = [
-      '📬 **Обращение с сайта**',
-      `**От:** ${name}${contact ? ` • ${contact}` : ''}`,
-      '',
-      message
-    ].join('\n');
-    const result = await sendToChannel(client, channelId, lines);
-    if (!result.ok) return res.status(502).json({ error: result.error });
     res.json({ ok: true });
   }));
 

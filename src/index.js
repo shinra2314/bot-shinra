@@ -87,8 +87,14 @@ async function main() {
   const tempRooms = createTempRooms(context);
   context.tempRooms = tempRooms;
 
-  // Веб-дашборд (тикеты + отправка от имени бота). Стартует в ClientReady.
+  // Веб-дашборд (тикеты + отправка от имени бота). Поднимаем сразу, не дожидаясь
+  // ClientReady — иначе при долгом/неуспешном логине порт не слушается и сайт не
+  // открывается. До готовности клиента API вернёт пустые гильдии — это норм.
   let webServer = null;
+  if (config.webEnabled) {
+    webServer = createWebServer(context);
+    webServer.start();
+  }
 
   client.once(Events.ClientReady, async (readyClient) => {
     for (const warning of validateConfig(config)) console.warn(warning);
@@ -100,10 +106,6 @@ async function main() {
       dirty = false;
       store.save().catch((error) => console.error('Periodic save error:', error));
     }, 30000);
-    if (config.webEnabled) {
-      webServer = createWebServer(context);
-      webServer.start();
-    }
     console.log(`Logged in as ${readyClient.user.tag}.`);
   });
 

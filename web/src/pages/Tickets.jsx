@@ -2,28 +2,18 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 
+// Тикеты создаются только Discord-командой /ticket. Сайт — просмотр и обработка.
 export default function Tickets({ ctx }) {
   const { gid } = ctx;
   const [tickets, setTickets] = useState([]);
   const [filter, setFilter] = useState('');
-  const [topic, setTopic] = useState('');
-  const [userId, setUserId] = useState('');
   const [loading, setLoading] = useState(true);
 
-  function load() {
+  useEffect(() => {
     if (!gid) return;
     setLoading(true);
     api.tickets(gid, filter).then((t) => { setTickets(t); setLoading(false); }).catch(() => setLoading(false));
-  }
-  useEffect(load, [gid, filter]);
-
-  async function create(e) {
-    e.preventDefault();
-    if (!topic.trim()) return;
-    await api.createTicket(gid, { topic, userId: userId || undefined });
-    setTopic(''); setUserId('');
-    load();
-  }
+  }, [gid, filter]);
 
   if (!gid) return <div className="empty">Нет доступных серверов.</div>;
 
@@ -41,18 +31,8 @@ export default function Tickets({ ctx }) {
         </select>
       </div>
 
-      <form className="panel" onSubmit={create} style={{ marginBottom: 18 }}>
-        <label className="field"><span>Тема нового тикета</span>
-          <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Опишите обращение" style={{ width: '100%' }} />
-        </label>
-        <label className="field"><span>ID пользователя (необязательно)</span>
-          <input value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="Discord user id" style={{ width: '100%' }} />
-        </label>
-        <button className="primary" type="submit">Создать тикет</button>
-      </form>
-
       {loading ? <div className="empty">Загрузка…</div>
-        : tickets.length === 0 ? <div className="empty">Тикетов нет.</div>
+        : tickets.length === 0 ? <div className="empty">Тикетов нет. Их создают через команду <code>/ticket</code> в Discord.</div>
         : tickets.map((t) => (
           <Link key={t.id} to={`/tickets/${t.id}`}>
             <div className="row">

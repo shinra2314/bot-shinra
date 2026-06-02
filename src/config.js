@@ -50,7 +50,6 @@ module.exports = {
   webHost: process.env.WEB_HOST || '127.0.0.1',
   webPort: numberFromEnv('WEB_PORT', 3000),
   webToken: process.env.DASHBOARD_TOKEN || null,
-  webRelayChannelId: process.env.WEB_RELAY_CHANNEL_ID || process.env.REPORT_CHANNEL_ID || process.env.ADMIN_CHANNEL_ID || null,
   globalRateLimit: numberFromEnv('GLOBAL_RATE_LIMIT', 5),
   globalRateWindowMs: numberFromEnv('GLOBAL_RATE_WINDOW_MS', 1000),
   accentColor: colorFromEnv('ACCENT_COLOR', 0x7C3AED),
