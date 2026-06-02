@@ -5,7 +5,7 @@ const {
   canvas, gridBackground, neonPanel, glowText, drawAvatar,
   font, roundRect, truncateToWidth
 } = require('../primitives');
-const { NEON } = require('../theme');
+const { NEON, RADIUS, GLOW, TYPE } = require('../theme');
 
 const MEDALS = { 1: '#FFD24A', 2: '#C7CCDA', 3: '#E08A4B' };
 
@@ -13,7 +13,7 @@ const MEDALS = { 1: '#FFD24A', 2: '#C7CCDA', 3: '#E08A4B' };
 function paintLeaderboardCard(spec) {
   const accent = spec.accent || '#FFD24A';
   const rows = (spec.rows || []).slice(0, 10);
-  const width = 940;
+  const width = 960;
   const headerH = 96;
   const rowH = 64;
   const rowGap = 10;
@@ -26,11 +26,11 @@ function paintLeaderboardCard(spec) {
 
   // Шапка.
   ctx.fillStyle = NEON.textPrimary;
-  ctx.font = font(800, 34);
-  glowText(ctx, truncateToWidth(ctx, spec.title || 'Топ', width - padX * 2), padX, 50, { color: accent, blur: 12 });
+  ctx.font = font(800, TYPE.name);
+  glowText(ctx, truncateToWidth(ctx, spec.title || 'Топ', width - padX * 2), padX, 50, { color: accent, blur: GLOW.md });
   if (spec.subtitle) {
     ctx.fillStyle = NEON.textMuted;
-    ctx.font = font(500, 17);
+    ctx.font = font(500, TYPE.body);
     ctx.fillText(truncateToWidth(ctx, spec.subtitle, width - padX * 2), padX, 76);
   }
 
@@ -38,7 +38,7 @@ function paintLeaderboardCard(spec) {
   for (const row of rows) {
     const medal = MEDALS[row.rank];
     const lineAccent = row.highlight ? accent : (medal || NEON.panelStroke);
-    neonPanel(ctx, padX, y, width - padX * 2, rowH, 16, lineAccent);
+    neonPanel(ctx, padX, y, width - padX * 2, rowH, RADIUS.row, lineAccent);
 
     // Ранг-бейдж.
     const badgeX = padX + 14;
@@ -46,7 +46,7 @@ function paintLeaderboardCard(spec) {
     if (medal) {
       ctx.save();
       ctx.shadowColor = medal;
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = GLOW.md;
       ctx.beginPath();
       ctx.arc(badgeX + 18, badgeCY, 18, 0, Math.PI * 2);
       ctx.fillStyle = medal;
@@ -72,7 +72,7 @@ function paintLeaderboardCard(spec) {
     // Имя.
     const nameX = avCX + avR + 16;
     const valueText = String(row.value ?? '');
-    ctx.font = font(700, 22);
+    ctx.font = font(700, TYPE.value);
     const valueW = ctx.measureText(valueText).width;
     const nameW = (width - padX) - nameX - valueW - 40;
     ctx.fillStyle = NEON.textPrimary;
@@ -82,9 +82,9 @@ function paintLeaderboardCard(spec) {
 
     // Значение справа.
     ctx.fillStyle = accent;
-    ctx.font = font(700, 22);
+    ctx.font = font(700, TYPE.value);
     ctx.textAlign = 'right';
-    glowText(ctx, valueText, width - padX - 18, badgeCY + 1, { color: accent, blur: 7 });
+    glowText(ctx, valueText, width - padX - 18, badgeCY + 1, { color: accent, blur: GLOW.sm });
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
 

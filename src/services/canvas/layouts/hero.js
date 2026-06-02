@@ -5,11 +5,11 @@ const {
   canvas, gridBackground, neonPanel, neonRing, neonStroke, glowText,
   drawAvatar, drawIcon, font, roundRect, truncateToWidth
 } = require('../primitives');
-const { NEON } = require('../theme');
+const { NEON, RADIUS, GLOW, TYPE } = require('../theme');
 
 // Плитка-стат: иконка слева, подпись (капсом) и крупное значение справа.
 function drawTile(ctx, x, y, w, h, tile, accent) {
-  neonPanel(ctx, x, y, w, h, 18, accent);
+  neonPanel(ctx, x, y, w, h, RADIUS.card, accent);
 
   const iconSize = 40;
   const iconX = x + 18;
@@ -21,11 +21,11 @@ function drawTile(ctx, x, y, w, h, tile, accent) {
 
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = NEON.textLabel;
-  ctx.font = font(600, 16);
+  ctx.font = font(600, TYPE.small);
   ctx.fillText(truncateToWidth(ctx, String(tile.label || '').toUpperCase(), textW), textX, y + h / 2 - 4);
 
   const valueColor = tile.accent || NEON.textPrimary;
-  let valueSize = 30;
+  let valueSize = TYPE.h2;
   const value = String(tile.value ?? '—');
   ctx.font = font(700, valueSize);
   while (valueSize > 20 && ctx.measureText(value).width > textW) {
@@ -33,13 +33,13 @@ function drawTile(ctx, x, y, w, h, tile, accent) {
     ctx.font = font(700, valueSize);
   }
   ctx.fillStyle = valueColor;
-  glowText(ctx, truncateToWidth(ctx, value, textW), textX, y + h / 2 + 24, { color: valueColor, blur: 8 });
+  glowText(ctx, truncateToWidth(ctx, value, textW), textX, y + h / 2 + 24, { color: valueColor, blur: GLOW.sm });
 }
 
 // spec: { accent, avatar, name, subtitle, ring:{value,max}|null, level, title,
 //         tiles:[{icon,label,value,accent?}] }
 function paintHeroCard(spec) {
-  const width = 940;
+  const width = 960;
   const height = 400;
   const cv = canvas.createCanvas(width, height);
   const ctx = cv.getContext('2d');
@@ -52,7 +52,7 @@ function paintHeroCard(spec) {
   const panelY = 30;
   const panelW = 300;
   const panelH = height - 60;
-  neonPanel(ctx, panelX, panelY, panelW, panelH, 28, accent);
+  neonPanel(ctx, panelX, panelY, panelW, panelH, RADIUS.panel, accent);
 
   const cx = panelX + panelW / 2;
   const avatarCY = panelY + 120;
@@ -70,7 +70,7 @@ function paintHeroCard(spec) {
     const by = avatarCY + avatarR - 6;
     ctx.save();
     ctx.shadowColor = accent;
-    ctx.shadowBlur = 16;
+    ctx.shadowBlur = GLOW.lg;
     ctx.beginPath();
     ctx.arc(bx, by, badgeR, 0, Math.PI * 2);
     ctx.fillStyle = accent;
@@ -88,8 +88,8 @@ function paintHeroCard(spec) {
   // Имя и подзаголовок.
   ctx.textAlign = 'center';
   ctx.fillStyle = NEON.textPrimary;
-  ctx.font = font(700, 34);
-  glowText(ctx, truncateToWidth(ctx, spec.name || '', panelW - 40), cx, avatarCY + avatarR + 64, { color: accent, blur: 10 });
+  ctx.font = font(700, TYPE.name);
+  glowText(ctx, truncateToWidth(ctx, spec.name || '', panelW - 40), cx, avatarCY + avatarR + 64, { color: accent, blur: GLOW.md });
   if (spec.subtitle) {
     ctx.fillStyle = NEON.textMuted;
     ctx.font = font(500, 19);
@@ -104,8 +104,8 @@ function paintHeroCard(spec) {
 
   if (spec.title) {
     ctx.fillStyle = NEON.textPrimary;
-    ctx.font = font(700, 30);
-    glowText(ctx, truncateToWidth(ctx, spec.title, rightW), rightX, rightY + 26, { color: accent, blur: 8 });
+    ctx.font = font(700, TYPE.h2);
+    glowText(ctx, truncateToWidth(ctx, spec.title, rightW), rightX, rightY + 26, { color: accent, blur: GLOW.sm });
     rightY += 52;
   }
 

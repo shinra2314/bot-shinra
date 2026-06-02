@@ -5,7 +5,7 @@ const {
   canvas, gridBackground, neonPanel, neonRing, neonBar, glowText, drawAvatar,
   drawIcon, font, roundRect, truncateToWidth
 } = require('../primitives');
-const { NEON } = require('../theme');
+const { NEON, RADIUS, GLOW, TYPE } = require('../theme');
 const { drawTile } = require('./hero');
 
 // spec: { accent, name, tag, level, ring:{value,max}, treasury, members:[{name,avatar}],
@@ -23,7 +23,7 @@ function paintClanCard(spec) {
   const py = 28;
   const pw = 300;
   const ph = height - 56;
-  neonPanel(ctx, px, py, pw, ph, 26, accent);
+  neonPanel(ctx, px, py, pw, ph, RADIUS.panel, accent);
 
   const cx = px + pw / 2;
   const emblemCY = py + 96;
@@ -45,16 +45,16 @@ function paintClanCard(spec) {
   // Название + тег.
   ctx.textAlign = 'center';
   ctx.fillStyle = NEON.textPrimary;
-  ctx.font = font(700, 28);
-  glowText(ctx, truncateToWidth(ctx, spec.name || 'Клан', pw - 40), cx, emblemCY + emblemR + 50, { color: accent, blur: 10 });
+  ctx.font = font(700, TYPE.h3);
+  glowText(ctx, truncateToWidth(ctx, spec.name || 'Клан', pw - 40), cx, emblemCY + emblemR + 50, { color: accent, blur: GLOW.md });
   if (spec.tag) {
     ctx.fillStyle = accent;
-    ctx.font = font(700, 17);
+    ctx.font = font(700, TYPE.body);
     ctx.fillText(truncateToWidth(ctx, `[${spec.tag}]`, pw - 50), cx, emblemCY + emblemR + 78);
   }
   if (spec.level != null) {
     ctx.fillStyle = NEON.textMuted;
-    ctx.font = font(600, 16);
+    ctx.font = font(600, TYPE.small);
     ctx.fillText(`Уровень ${spec.level}`, cx, emblemCY + emblemR + 104);
   }
   ctx.textAlign = 'left';
@@ -67,7 +67,7 @@ function paintClanCard(spec) {
     let mx = cx - totalW / 2 + avR;
     const my = py + ph - 40;
     ctx.fillStyle = NEON.textLabel;
-    ctx.font = font(600, 12);
+    ctx.font = font(600, TYPE.micro);
     ctx.textAlign = 'center';
     ctx.fillText('СОСТАВ', cx, my - 30);
     ctx.textAlign = 'left';
@@ -98,7 +98,7 @@ function paintClanCard(spec) {
   if (spec.war) {
     const ratio = spec.war.target > 0 ? spec.war.score / spec.war.target : 0;
     ctx.fillStyle = NEON.textLabel;
-    ctx.font = font(600, 13);
+    ctx.font = font(600, TYPE.label);
     ctx.fillText((spec.war.label || 'ПРОГРЕСС ВОЙНЫ').toUpperCase(), rx, ry + 4);
     ctx.fillStyle = NEON.textPrimary;
     ctx.font = font(700, 15);

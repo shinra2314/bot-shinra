@@ -5,7 +5,7 @@ const {
   canvas, gridBackground, glowText, drawIcon,
   font, roundRect, truncateToWidth
 } = require('../primitives');
-const { NEON } = require('../theme');
+const { NEON, GLOW, TYPE } = require('../theme');
 
 const LEFT = '#22D3EE';
 const RIGHT = '#FF3B6B';
@@ -13,7 +13,7 @@ const RIGHT = '#FF3B6B';
 // spec: { title, subtitle, a:{name,score}, b:{name,score}, accent? }
 function paintWarCard(spec) {
   const accent = spec.accent || '#FF3B6B';
-  const width = 940;
+  const width = 960;
   const height = 360;
   const cv = canvas.createCanvas(width, height);
   const ctx = cv.getContext('2d');
@@ -29,22 +29,22 @@ function paintWarCard(spec) {
   ctx.fillStyle = NEON.textPrimary;
   ctx.font = font(800, 32);
   ctx.textAlign = 'center';
-  glowText(ctx, spec.title || 'Клановая война', centerX, 56, { color: accent, blur: 12 });
+  glowText(ctx, spec.title || 'Клановая война', centerX, 56, { color: accent, blur: GLOW.md });
   if (spec.subtitle) {
     ctx.fillStyle = NEON.textMuted;
-    ctx.font = font(500, 17);
+    ctx.font = font(500, TYPE.body);
     ctx.fillText(truncateToWidth(ctx, spec.subtitle, width - 80), centerX, 84);
   }
 
   // Имена кланов.
   const namesY = 150;
-  ctx.font = font(700, 26);
+  ctx.font = font(700, TYPE.h3);
   ctx.textAlign = 'left';
   ctx.fillStyle = LEFT;
-  glowText(ctx, truncateToWidth(ctx, spec.a?.name || 'Клан A', width / 2 - 90), 50, namesY, { color: LEFT, blur: 8 });
+  glowText(ctx, truncateToWidth(ctx, spec.a?.name || 'Клан A', width / 2 - 90), 50, namesY, { color: LEFT, blur: GLOW.sm });
   ctx.textAlign = 'right';
   ctx.fillStyle = RIGHT;
-  glowText(ctx, truncateToWidth(ctx, spec.b?.name || 'Клан B', width / 2 - 90), width - 50, namesY, { color: RIGHT, blur: 8 });
+  glowText(ctx, truncateToWidth(ctx, spec.b?.name || 'Клан B', width / 2 - 90), width - 50, namesY, { color: RIGHT, blur: GLOW.sm });
 
   // «VS» по центру.
   ctx.textAlign = 'center';
@@ -57,10 +57,10 @@ function paintWarCard(spec) {
   ctx.font = font(800, 52);
   ctx.textAlign = 'left';
   ctx.fillStyle = LEFT;
-  glowText(ctx, String(aScore), 50, scoreY, { color: LEFT, blur: 12 });
+  glowText(ctx, String(aScore), 50, scoreY, { color: LEFT, blur: GLOW.md });
   ctx.textAlign = 'right';
   ctx.fillStyle = RIGHT;
-  glowText(ctx, String(bScore), width - 50, scoreY, { color: RIGHT, blur: 12 });
+  glowText(ctx, String(bScore), width - 50, scoreY, { color: RIGHT, blur: GLOW.md });
   ctx.textAlign = 'left';
 
   // Tug-of-war бар: левая доля циан, правая — розовая.
@@ -79,7 +79,7 @@ function paintWarCard(spec) {
   ctx.clip();
   // Правая (вся ширина) — розовая основа.
   ctx.shadowColor = RIGHT;
-  ctx.shadowBlur = 12;
+  ctx.shadowBlur = GLOW.md;
   ctx.fillStyle = RIGHT;
   ctx.fillRect(barX, barY, barW, barH);
   // Левая доля — циан поверх.

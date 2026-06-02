@@ -14,20 +14,25 @@ const {
   ThumbnailBuilder
 } = require('discord.js');
 
+const { DOMAIN, hexToInt } = require('../services/canvas/theme');
+
+// COLORS выводятся из единой доменной палитры (theme.DOMAIN) через hexToInt —
+// чтобы int-цвета панелей и hex-акценты canvas-карт не расходились. Форма экспорта
+// неизменна (ключи те же), вызовы команд править не нужно.
 const COLORS = {
-  primary: 0xA855F7,
-  success: 0x34F5A0,
-  warning: 0xFFD24A,
-  danger: 0xFF3B6B,
-  info: 0x22D3EE,
-  economy: 0xFFD24A,
-  games: 0xFF3B6B,
-  clans: 0x34F5A0,
-  music: 0xA78BFA,
-  love: 0xFF3B6B,
-  profile: 0xA855F7,
-  neutral: 0x12131A,
-  accent: 0xA855F7
+  primary: hexToInt(DOMAIN.primary),
+  success: hexToInt(DOMAIN.success),
+  warning: hexToInt(DOMAIN.warning),
+  danger: hexToInt(DOMAIN.danger),
+  info: hexToInt(DOMAIN.info),
+  economy: hexToInt(DOMAIN.economy),
+  games: hexToInt(DOMAIN.games),
+  clans: hexToInt(DOMAIN.clans),
+  music: hexToInt(DOMAIN.music),
+  love: hexToInt(DOMAIN.love),
+  profile: hexToInt(DOMAIN.profile),
+  neutral: hexToInt(DOMAIN.neutral),
+  accent: hexToInt(DOMAIN.primary)
 };
 
 // Доменные иконки (unicode) для заголовков и строк-фактов в Components v2.
@@ -51,7 +56,7 @@ const ICONS = {
   shop: '🛒',
   inventory: '🎒',
   xp: '✨',
-  level: '⭐',
+  level: '🆙',
   voice: '🔊',
   time: '⏳',
   star: '⭐',
@@ -327,6 +332,24 @@ function successPanel(message, title = 'Готово') {
   });
 }
 
+function warningPanel(message, title = 'Внимание') {
+  return panel({
+    title,
+    icon: ICONS.warning,
+    description: message,
+    color: COLORS.warning
+  });
+}
+
+function infoPanel(message, title = 'Информация') {
+  return panel({
+    title,
+    icon: ICONS.info,
+    description: message,
+    color: COLORS.info
+  });
+}
+
 module.exports = {
   COLORS,
   ICONS,
@@ -337,6 +360,7 @@ module.exports = {
   componentFlags,
   componentPayload,
   errorPanel,
+  infoPanel,
   keyValue,
   linkButton,
   mediaPanel,
@@ -348,5 +372,6 @@ module.exports = {
   statGrid,
   successPanel,
   text,
-  update
+  update,
+  warningPanel
 };

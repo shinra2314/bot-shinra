@@ -3,10 +3,10 @@
 // ряд достижений. Всё в dark-neon со свечением.
 
 const {
-  canvas, neonPanel, neonRing, neonStroke, glowText,
+  canvas, neonPanel, neonRing, neonStroke, glowText, addDepth,
   drawAvatar, drawIcon, font, roundRect, truncateToWidth
 } = require('../primitives');
-const { NEON } = require('../theme');
+const { NEON, RADIUS, GLOW, TYPE } = require('../theme');
 const { drawTile } = require('./hero');
 
 // Фон профиля: тематический градиент (покупаемый фон) + неоновая сетка + свечение.
@@ -32,13 +32,15 @@ function themedBackground(ctx, width, height, theme, accent) {
   glow.addColorStop(1, '#00000000');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, height);
+
+  addDepth(ctx, width, height);
 }
 
 function drawLevelBox(ctx, x, y, size, value, accent) {
   ctx.save();
   ctx.shadowColor = accent;
-  ctx.shadowBlur = 16;
-  roundRect(ctx, x, y, size, size, 14);
+  ctx.shadowBlur = GLOW.lg;
+  roundRect(ctx, x, y, size, size, RADIUS.chip);
   ctx.fillStyle = accent;
   ctx.fill();
   ctx.restore();
@@ -52,7 +54,7 @@ function drawLevelBox(ctx, x, y, size, value, accent) {
 }
 
 function drawCurrencyTile(ctx, x, y, w, h, tile, accent) {
-  neonPanel(ctx, x, y, w, h, 16, accent);
+  neonPanel(ctx, x, y, w, h, RADIUS.row, accent);
   const padX = 18;
 
   const value = String(tile.value ?? '—');
@@ -68,16 +70,16 @@ function drawCurrencyTile(ctx, x, y, w, h, tile, accent) {
   ctx.fillStyle = tile.color || NEON.textPrimary;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
-  glowText(ctx, valueText, x + w - padX, y + h / 2 + 1, { color: tile.color || NEON.textPrimary, blur: 7 });
+  glowText(ctx, valueText, x + w - padX, y + h / 2 + 1, { color: tile.color || NEON.textPrimary, blur: GLOW.sm });
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
 
   const leftMax = w - padX * 2 - valueW - 16;
   ctx.fillStyle = NEON.textLabel;
-  ctx.font = font(600, 12);
+  ctx.font = font(600, TYPE.micro);
   ctx.fillText(truncateToWidth(ctx, String(tile.sub || 'COIN').toUpperCase(), leftMax), x + padX, y + 24);
   ctx.fillStyle = tile.color || NEON.textPrimary;
-  ctx.font = font(700, 22);
+  ctx.font = font(700, TYPE.value);
   ctx.fillText(truncateToWidth(ctx, tile.name, leftMax), x + padX, y + h - 16);
 }
 
@@ -104,7 +106,7 @@ function drawSakura(ctx, cx, cy, r, color) {
 
 // Компактный чип: иконка-бокс слева + текст. kind: 'love'|'role'|'clan'.
 function drawRoleChip(ctx, x, y, w, h, chip, accent) {
-  neonPanel(ctx, x, y, w, h, 18, accent);
+  neonPanel(ctx, x, y, w, h, RADIUS.card, accent);
 
   const iconBox = 38;
   const ix = x + 14;
@@ -128,7 +130,7 @@ function drawRoleChip(ctx, x, y, w, h, chip, accent) {
     } else {
       ctx.save();
       ctx.shadowColor = chip.color || accent;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = GLOW.sm;
       ctx.beginPath();
       ctx.arc(iconCX, iconCY, iconBox / 2 - 9, 0, Math.PI * 2);
       ctx.fillStyle = chip.color || accent;
@@ -142,7 +144,7 @@ function drawRoleChip(ctx, x, y, w, h, chip, accent) {
   const textX = ix + iconBox + 11;
   const textW = x + w - textX - 12;
   ctx.fillStyle = NEON.textPrimary;
-  ctx.font = font(600, 17);
+  ctx.font = font(600, TYPE.body);
   ctx.textBaseline = 'middle';
   ctx.fillText(truncateToWidth(ctx, String(chip.text || ''), textW), textX, iconCY + 1);
   ctx.textBaseline = 'alphabetic';
@@ -156,7 +158,7 @@ function drawAchievementsRow(ctx, x, y, w, h, achievements, accent) {
   for (let i = 0; i < count; i += 1) {
     const cx = x + i * (cw + gap);
     const name = achievements[i];
-    neonPanel(ctx, cx, y, cw, h, 16, name ? accent : 'rgba(138,144,176,0.25)');
+    neonPanel(ctx, cx, y, cw, h, RADIUS.row, name ? accent : 'rgba(138,144,176,0.25)');
 
     const dotR = 6;
     const dotX = cx + 16 + dotR;
@@ -164,7 +166,7 @@ function drawAchievementsRow(ctx, x, y, w, h, achievements, accent) {
     if (name) {
       ctx.save();
       ctx.shadowColor = accent;
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = GLOW.md;
     }
     ctx.beginPath();
     ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
@@ -175,15 +177,15 @@ function drawAchievementsRow(ctx, x, y, w, h, achievements, accent) {
     const textX = dotX + dotR + 12;
     const textW = cx + cw - textX - 12;
     ctx.fillStyle = NEON.textLabel;
-    ctx.font = font(600, 12);
+    ctx.font = font(600, TYPE.micro);
     ctx.fillText('ДОСТИЖЕНИЕ', textX, y + h / 2 - 6);
     if (name) {
       ctx.fillStyle = NEON.textPrimary;
-      ctx.font = font(700, 16);
+      ctx.font = font(700, TYPE.small);
       ctx.fillText(truncateToWidth(ctx, name, textW), textX, y + h / 2 + 16);
     } else {
       ctx.fillStyle = '#6b7080';
-      ctx.font = font(600, 16);
+      ctx.font = font(600, TYPE.small);
       ctx.fillText('Отсутствует', textX, y + h / 2 + 16);
     }
   }
@@ -194,7 +196,7 @@ function drawPresence(ctx, x, cy, presence) {
   const r = 6;
   ctx.save();
   ctx.shadowColor = presence.color || '#747f8d';
-  ctx.shadowBlur = 8;
+  ctx.shadowBlur = GLOW.sm;
   ctx.beginPath();
   ctx.arc(x + r, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = presence.color || '#747f8d';
@@ -222,7 +224,7 @@ function drawTagPills(ctx, x, yTop, maxW, tags, accent) {
     roundRect(ctx, cursor, yTop, pillW, h, h / 2);
     ctx.fillStyle = `${accent}22`;
     ctx.fill();
-    neonStroke(ctx, () => roundRect(ctx, cursor, yTop, pillW, h, h / 2), { color: accent, blur: 6, width: 1 });
+    neonStroke(ctx, () => roundRect(ctx, cursor, yTop, pillW, h, h / 2), { color: accent, blur: GLOW.sm, width: 1 });
     ctx.fillStyle = accent;
     ctx.fillText(label, cursor + padX, yTop + h / 2 + 1);
     cursor += pillW + gap;
@@ -243,14 +245,14 @@ function paintProfileCard(spec) {
   const py = 28;
   const pw = 300;
   const ph = height - 56;
-  roundRect(ctx, px, py, pw, ph, 26);
+  roundRect(ctx, px, py, pw, ph, RADIUS.panel);
   ctx.fillStyle = NEON.panelFill;
   ctx.fill();
 
   // Баннер: аватар крупно за панелью сверху, размытый и затемнённый.
   if (spec.avatar) {
     ctx.save();
-    roundRect(ctx, px, py, pw, ph, 26);
+    roundRect(ctx, px, py, pw, ph, RADIUS.panel);
     ctx.clip();
     ctx.globalAlpha = 0.32;
     try { ctx.filter = 'blur(3px)'; } catch (error) { /* фильтр может быть недоступен */ }
@@ -266,7 +268,7 @@ function paintProfileCard(spec) {
     ctx.restore();
   }
 
-  neonStroke(ctx, () => roundRect(ctx, px, py, pw, ph, 26), { color: accent, blur: 10, width: 1.2 });
+  neonStroke(ctx, () => roundRect(ctx, px, py, pw, ph, RADIUS.panel), { color: accent, blur: GLOW.md, width: 1.2 });
 
   const cx = px + pw / 2;
   const avatarCY = py + 72;
@@ -284,13 +286,13 @@ function paintProfileCard(spec) {
   const nameY = avatarCY + avatarR + 44;
   ctx.save();
   ctx.shadowColor = accent;
-  ctx.shadowBlur = 10;
+  ctx.shadowBlur = GLOW.md;
   ctx.fillStyle = accent;
   roundRect(ctx, px + 22, nameY - 21, 5, 25, 2);
   ctx.fill();
   ctx.restore();
   ctx.fillStyle = NEON.textPrimary;
-  ctx.font = font(700, 26);
+  ctx.font = font(700, TYPE.h3);
   ctx.fillText(truncateToWidth(ctx, spec.name || '', pw - 70), px + 38, nameY);
   if (spec.subtitle) {
     ctx.fillStyle = NEON.textMuted;

@@ -5,14 +5,14 @@ const {
   canvas, gridBackground, neonPanel, neonRing, neonBar, glowText, drawAvatar,
   font, truncateToWidth
 } = require('../primitives');
-const { NEON } = require('../theme');
+const { NEON, RADIUS, GLOW, TYPE } = require('../theme');
 
 function drawHeart(ctx, cx, cy, size, color) {
   ctx.save();
   ctx.translate(cx, cy);
   ctx.scale(size / 100, size / 100);
   ctx.shadowColor = color;
-  ctx.shadowBlur = 26;
+  ctx.shadowBlur = GLOW.xl;
   ctx.fillStyle = color;
   ctx.beginPath();
   ctx.moveTo(0, 30);
@@ -26,7 +26,7 @@ function drawHeart(ctx, cx, cy, size, color) {
 // spec: { accent, a:{name,avatar}, b:{name,avatar}|null, days, compatibility, tiles }
 function paintLoveCard(spec) {
   const accent = spec.accent || '#FF3B6B';
-  const width = 940;
+  const width = 960;
   const height = 400;
   const cv = canvas.createCanvas(width, height);
   const ctx = cv.getContext('2d');
@@ -44,7 +44,7 @@ function paintLoveCard(spec) {
   ctx.fillStyle = NEON.textPrimary;
   ctx.font = font(700, 24);
   ctx.textAlign = 'center';
-  glowText(ctx, truncateToWidth(ctx, spec.a?.name || '—', 300), leftCX, avCY + avR + 48, { color: accent, blur: 8 });
+  glowText(ctx, truncateToWidth(ctx, spec.a?.name || '—', 300), leftCX, avCY + avR + 48, { color: accent, blur: GLOW.sm });
 
   // Правый аватар или плейсхолдер «свободно».
   if (spec.b) {
@@ -52,7 +52,7 @@ function paintLoveCard(spec) {
     neonRing(ctx, rightCX, avCY, avR + 8, 1, accent);
     ctx.fillStyle = NEON.textPrimary;
     ctx.font = font(700, 24);
-    glowText(ctx, truncateToWidth(ctx, spec.b.name || '—', 300), rightCX, avCY + avR + 48, { color: accent, blur: 8 });
+    glowText(ctx, truncateToWidth(ctx, spec.b.name || '—', 300), rightCX, avCY + avR + 48, { color: accent, blur: GLOW.sm });
   } else {
     drawAvatar(ctx, null, rightCX, avCY, avR);
     neonRing(ctx, rightCX, avCY, avR + 8, 0, accent);
@@ -68,12 +68,12 @@ function paintLoveCard(spec) {
   // Дни вместе / совместимость.
   if (spec.days != null) {
     ctx.fillStyle = NEON.textMuted;
-    ctx.font = font(600, 16);
+    ctx.font = font(600, TYPE.small);
     ctx.textAlign = 'center';
     ctx.fillText('ВМЕСТЕ', centerX, avCY + 64);
     ctx.fillStyle = NEON.textPrimary;
-    ctx.font = font(800, 26);
-    glowText(ctx, `${spec.days} дн.`, centerX, avCY + 96, { color: accent, blur: 8 });
+    ctx.font = font(800, TYPE.h3);
+    glowText(ctx, `${spec.days} дн.`, centerX, avCY + 96, { color: accent, blur: GLOW.sm });
     ctx.textAlign = 'left';
   }
 
@@ -83,10 +83,10 @@ function paintLoveCard(spec) {
     const bx = centerX - barW / 2;
     const by = height - 96;
     ctx.fillStyle = NEON.textLabel;
-    ctx.font = font(600, 14);
+    ctx.font = font(600, TYPE.label);
     ctx.fillText('СОВМЕСТИМОСТЬ', bx, by - 8);
     ctx.fillStyle = accent;
-    ctx.font = font(700, 16);
+    ctx.font = font(700, TYPE.small);
     ctx.textAlign = 'right';
     ctx.fillText(`${spec.compatibility}%`, bx + barW, by - 8);
     ctx.textAlign = 'left';
@@ -103,13 +103,13 @@ function paintLoveCard(spec) {
     const y = height - tileH - 18;
     tiles.forEach((t, i) => {
       const x = padX + i * (tileW + gap);
-      neonPanel(ctx, x, y, tileW, tileH, 12, accent);
+      neonPanel(ctx, x, y, tileW, tileH, RADIUS.chip, accent);
       ctx.fillStyle = NEON.textLabel;
-      ctx.font = font(600, 12);
+      ctx.font = font(600, TYPE.micro);
       ctx.textAlign = 'center';
       ctx.fillText(String(t.label || '').toUpperCase(), x + tileW / 2, y + 18);
       ctx.fillStyle = NEON.textPrimary;
-      ctx.font = font(700, 16);
+      ctx.font = font(700, TYPE.small);
       ctx.fillText(truncateToWidth(ctx, String(t.value ?? ''), tileW - 16), x + tileW / 2, y + 36);
       ctx.textAlign = 'left';
     });

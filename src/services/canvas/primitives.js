@@ -4,7 +4,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { NEON } = require('./theme');
+const { NEON, GLOW } = require('./theme');
 
 let canvas = null;
 let CARD_AVAILABLE = false;
@@ -24,11 +24,34 @@ const ICON_FILES = {
   case: 'case.png'
 };
 
+// Реальные начертания Montserrat по весам. Skia (napi-rs) подбирает нужный face
+// внутри семейства по weight из font-строки — поэтому регистрируем все файлы под
+// одним именем FONT_FAMILY. Если весовых файлов нет, откатываемся на единый
+// Montserrat.ttf (старое поведение), чтобы рендер не падал.
+const FONT_WEIGHT_FILES = [
+  'Montserrat-Regular.ttf',
+  'Montserrat-Medium.ttf',
+  'Montserrat-SemiBold.ttf',
+  'Montserrat-Bold.ttf',
+  'Montserrat-ExtraBold.ttf'
+];
+
 try {
   canvas = require('@napi-rs/canvas');
-  const fontPath = path.join(ASSETS, 'fonts', 'Montserrat.ttf');
-  if (fs.existsSync(fontPath)) {
-    canvas.GlobalFonts.registerFromPath(fontPath, FONT_FAMILY);
+  const fontsDir = path.join(ASSETS, 'fonts');
+  let registered = 0;
+  for (const file of FONT_WEIGHT_FILES) {
+    const weightPath = path.join(fontsDir, file);
+    if (fs.existsSync(weightPath)) {
+      canvas.GlobalFonts.registerFromPath(weightPath, FONT_FAMILY);
+      registered += 1;
+    }
+  }
+  if (registered === 0) {
+    const legacyPath = path.join(fontsDir, 'Montserrat.ttf');
+    if (fs.existsSync(legacyPath)) {
+      canvas.GlobalFonts.registerFromPath(legacyPath, FONT_FAMILY);
+    }
   }
   CARD_AVAILABLE = true;
 } catch (error) {
@@ -94,6 +117,54 @@ function drawIcon(ctx, key, x, y, size) {
   if (image) ctx.drawImage(image, x, y, size, size);
 }
 
+// Кэш плитки шума для зернистости. Генерим один раз: маленький тайл со
+// случайными монохромными пикселями, потом тайлим его с низкой прозрачностью.
+let grainTile = null;
+function getGrainTile() {
+  if (grainTile || !canvas) return grainTile;
+  const size = 128;
+  const tile = canvas.createCanvas(size, size);
+  const tctx = tile.getContext('2d');
+  const img = tctx.createImageData(size, size);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.floor(Math.random() * 255);
+    img.data[i] = v;
+    img.data[i + 1] = v;
+    img.data[i + 2] = v;
+    img.data[i + 3] = 255;
+  }
+  tctx.putImageData(img, 0, 0);
+  grainTile = tile;
+  return grainTile;
+}
+
+// Глубина поверх фона: виньетка по краям + лёгкое плёночное зерно.
+// Общая для gridBackground и тематического фона профиля — единый «премиум» вид.
+function addDepth(ctx, w, h) {
+  // Виньетка: прозрачный центр → затемнение к углам.
+  const vignette = ctx.createRadialGradient(
+    w / 2, h / 2, Math.min(w, h) * 0.32,
+    w / 2, h / 2, Math.max(w, h) * 0.72
+  );
+  vignette.addColorStop(0, '#00000000');
+  vignette.addColorStop(1, 'rgba(2,3,8,0.45)');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, w, h);
+
+  // Зерно: тайлим кэш-плитку с малой прозрачностью.
+  const tile = getGrainTile();
+  if (tile) {
+    ctx.save();
+    ctx.globalAlpha = 0.035;
+    for (let y = 0; y < h; y += tile.height) {
+      for (let x = 0; x < w; x += tile.width) {
+        ctx.drawImage(tile, x, y);
+      }
+    }
+    ctx.restore();
+  }
+}
+
 // Фон: тёмный градиент + неоновая сетка + угловое свечение акцентом.
 function gridBackground(ctx, w, h, accent) {
   const g = ctx.createLinearGradient(0, 0, w, h);
@@ -130,6 +201,8 @@ function gridBackground(ctx, w, h, accent) {
   glow2.addColorStop(1, '#00000000');
   ctx.fillStyle = glow2;
   ctx.fillRect(0, 0, w, h);
+
+  addDepth(ctx, w, h);
 }
 
 // Текст со свечением. Вызывающий заранее ставит font/fillStyle/textAlign/baseline.
@@ -166,7 +239,7 @@ function neonRing(ctx, cx, cy, radius, ratio, color) {
   if (clamped > 0) {
     const start = -Math.PI / 2;
     ctx.shadowColor = color;
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = GLOW.lg;
     ctx.strokeStyle = color;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, start, start + clamped * Math.PI * 2);
@@ -180,7 +253,7 @@ function neonPanel(ctx, x, y, w, h, r, accent) {
   roundRect(ctx, x, y, w, h, r);
   ctx.fillStyle = NEON.panelFill;
   ctx.fill();
-  neonStroke(ctx, () => roundRect(ctx, x, y, w, h, r), { color: accent, blur: 8, width: 1 });
+  neonStroke(ctx, () => roundRect(ctx, x, y, w, h, r), { color: accent, blur: GLOW.sm, width: 1 });
 }
 
 // Неоновый горизонтальный прогресс-бар.
@@ -193,7 +266,7 @@ function neonBar(ctx, x, y, w, h, ratio, color) {
     ctx.save();
     roundRect(ctx, x, y, Math.max(h, w * clamped), h, h / 2);
     ctx.shadowColor = color;
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = GLOW.md;
     ctx.fillStyle = color;
     ctx.fill();
     ctx.restore();
@@ -225,6 +298,7 @@ module.exports = {
   drawAvatar,
   drawIcon,
   gridBackground,
+  addDepth,
   glowText,
   neonStroke,
   neonRing,

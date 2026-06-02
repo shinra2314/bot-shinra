@@ -5,7 +5,7 @@ const {
   canvas, gridBackground, neonPanel, glowText, drawIcon,
   font, roundRect, truncateToWidth
 } = require('../primitives');
-const { NEON } = require('../theme');
+const { NEON, RADIUS, GLOW, TYPE } = require('../theme');
 
 const GOLD = '#FFD24A';
 const OWNED = '#34F5A0';
@@ -23,11 +23,11 @@ function paintGridCard(spec) {
   const padX = 30;
   // Шапка.
   ctx.fillStyle = NEON.textPrimary;
-  ctx.font = font(800, 30);
-  glowText(ctx, truncateToWidth(ctx, spec.title || 'Магазин', width - padX * 2), padX, 48, { color: accent, blur: 10 });
+  ctx.font = font(800, TYPE.h2);
+  glowText(ctx, truncateToWidth(ctx, spec.title || 'Магазин', width - padX * 2), padX, 48, { color: accent, blur: GLOW.md });
   if (spec.subtitle) {
     ctx.fillStyle = NEON.textMuted;
-    ctx.font = font(500, 16);
+    ctx.font = font(500, TYPE.small);
     ctx.fillText(truncateToWidth(ctx, spec.subtitle, width - padX * 2), padX, 72);
   }
 
@@ -45,7 +45,7 @@ function paintGridCard(spec) {
     const x = padX + col * (cellW + gap);
     const y = top + row * (cellH + gap);
     const lineAccent = item.owned ? OWNED : accent;
-    neonPanel(ctx, x, y, cellW, cellH, 18, lineAccent);
+    neonPanel(ctx, x, y, cellW, cellH, RADIUS.card, lineAccent);
 
     // Иконка по центру сверху.
     const iconSize = 56;
@@ -60,12 +60,12 @@ function paintGridCard(spec) {
     // Цена или «куплено».
     if (item.owned) {
       ctx.fillStyle = OWNED;
-      ctx.font = font(700, 17);
-      glowText(ctx, 'Куплено', x + cellW / 2, y + iconSize + 80, { color: OWNED, blur: 7 });
+      ctx.font = font(700, TYPE.body);
+      glowText(ctx, 'Куплено', x + cellW / 2, y + iconSize + 80, { color: OWNED, blur: GLOW.sm });
     } else {
       ctx.fillStyle = GOLD;
-      ctx.font = font(800, 22);
-      glowText(ctx, String(item.price ?? '—'), x + cellW / 2, y + iconSize + 82, { color: GOLD, blur: 8 });
+      ctx.font = font(800, TYPE.value);
+      glowText(ctx, String(item.price ?? '—'), x + cellW / 2, y + iconSize + 82, { color: GOLD, blur: GLOW.sm });
     }
     ctx.textAlign = 'left';
   });
