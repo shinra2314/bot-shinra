@@ -298,20 +298,44 @@ function componentPayload(components, options = {}) {
   };
 }
 
+// Коды Discord для «протухшего»/уже отвеченного взаимодействия. Если ответ
+// опоздал (рендер карты дольше 3 сек) — токен мёртв, и любой reply/update кинет
+// 10062. Глотаем такие ошибки, чтобы один медленный рендер не ронял процесс.
+const EXPIRED_INTERACTION_CODES = new Set([10062, 40060, 10008, 10015]);
+
+function isExpiredInteraction(error) {
+  return Boolean(error) && EXPIRED_INTERACTION_CODES.has(error.code);
+}
+
 async function reply(interaction, components, options = {}) {
   const payload = componentPayload(components, options);
-  if (interaction.deferred || interaction.replied) {
-    return interaction.editReply(payload);
+  try {
+    if (interaction.deferred || interaction.replied) {
+      return await interaction.editReply(payload);
+    }
+    return await interaction.reply(payload);
+  } catch (error) {
+    if (isExpiredInteraction(error)) return null;
+    throw error;
   }
-  return interaction.reply(payload);
 }
 
 async function update(interaction, components, options = {}) {
-  return interaction.update({
+  const payload = {
     components: Array.isArray(components) ? components : [components],
     allowedMentions: { parse: [] },
     files: options.files
-  });
+  };
+  try {
+    // Если взаимодействие уже подтверждено (deferUpdate) — редактируем ответ.
+    if (interaction.deferred || interaction.replied) {
+      return await interaction.editReply(payload);
+    }
+    return await interaction.update(payload);
+  } catch (error) {
+    if (isExpiredInteraction(error)) return null;
+    throw error;
+  }
 }
 
 function errorPanel(message, title = 'Не получилось') {

@@ -345,6 +345,15 @@ async function runCasino(interaction, context, payload, respond = reply) {
   }
 
   await context.store.save();
+
+  // Рендер карты результата (canvas) может занять >3 сек. Для кнопок успеваем
+  // подтвердить взаимодействие (deferUpdate, токен живёт 15 мин), иначе update
+  // опоздает и Discord вернёт 10062. Слэш-команды подтвердить так нельзя.
+  const isComponent = typeof interaction.isMessageComponent === 'function' && interaction.isMessageComponent();
+  if (isComponent && !interaction.deferred && !interaction.replied) {
+    await interaction.deferUpdate().catch(() => null);
+  }
+
   const { components, files } = await resultPanel(interaction.user, updatedProfile, result);
   return respond(interaction, components, { files });
 }
