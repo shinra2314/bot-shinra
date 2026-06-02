@@ -8,6 +8,7 @@ const createVoiceTracker = require('./services/voiceTracker');
 const achievements = require('./services/achievements');
 const { loadIcons } = require('./services/cardRenderer');
 const { buildAchievementCard } = require('./services/profileCard');
+const { createWebServer } = require('./web/server');
 const { COLORS, ICONS, componentPayload, errorPanel, mediaPanel, reply } = require('./ui/components');
 
 // Отправить в канал карточку-уведомление о новом достижении (best-effort).
@@ -86,6 +87,9 @@ async function main() {
   const tempRooms = createTempRooms(context);
   context.tempRooms = tempRooms;
 
+  // Веб-дашборд (тикеты + отправка от имени бота). Стартует в ClientReady.
+  let webServer = null;
+
   client.once(Events.ClientReady, async (readyClient) => {
     for (const warning of validateConfig(config)) console.warn(warning);
     voiceTracker.hydrate(readyClient);
@@ -96,6 +100,10 @@ async function main() {
       dirty = false;
       store.save().catch((error) => console.error('Periodic save error:', error));
     }, 30000);
+    if (config.webEnabled) {
+      webServer = createWebServer(context);
+      webServer.start();
+    }
     console.log(`Logged in as ${readyClient.user.tag}.`);
   });
 
@@ -167,6 +175,7 @@ async function main() {
 
   async function shutdown(signal) {
     console.log(`Received ${signal}, saving data...`);
+    if (webServer) await webServer.stop().catch((error) => console.error('Web shutdown error:', error));
     await voiceTracker.stopAll().catch((error) => console.error('Voice shutdown error:', error));
     await store.save().catch((error) => console.error('Store save error:', error));
     store.close();

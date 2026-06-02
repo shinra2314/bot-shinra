@@ -44,6 +44,13 @@ module.exports = {
   tempRoomCategoryId: process.env.TEMP_ROOM_CATEGORY_ID || null,
   databasePath: path.resolve(projectRoot, process.env.DATABASE_PATH || 'data/onix.db'),
   redisUrl: process.env.REDIS_URL || null,
+  // Веб-дашборд. Без авторизации — по умолчанию слушаем только localhost.
+  // Перед публичным хостингом (WEB_HOST=0.0.0.0) задай DASHBOARD_TOKEN.
+  webEnabled: /^(1|true|yes)$/i.test(String(process.env.WEB_ENABLED || '')),
+  webHost: process.env.WEB_HOST || '127.0.0.1',
+  webPort: numberFromEnv('WEB_PORT', 3000),
+  webToken: process.env.DASHBOARD_TOKEN || null,
+  webRelayChannelId: process.env.WEB_RELAY_CHANNEL_ID || process.env.REPORT_CHANNEL_ID || process.env.ADMIN_CHANNEL_ID || null,
   globalRateLimit: numberFromEnv('GLOBAL_RATE_LIMIT', 5),
   globalRateWindowMs: numberFromEnv('GLOBAL_RATE_WINDOW_MS', 1000),
   accentColor: colorFromEnv('ACCENT_COLOR', 0x7C3AED),

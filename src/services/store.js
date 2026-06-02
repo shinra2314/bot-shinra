@@ -598,6 +598,53 @@ class Store {
     return report;
   }
 
+  // ---- Тикеты (обращения) ----
+  // Единый источник правды для тикетов: и Discord-команды, и веб-дашборд
+  // ходят через эти методы. Старые тикеты без messages/source остаются валидны.
+  tickets(guildId) {
+    return this.guild(guildId).tickets;
+  }
+
+  addTicket(guildId, ticket) {
+    const guild = this.guild(guildId);
+    const record = {
+      id: ticket.id || `${Date.now().toString(36)}${Math.random().toString(16).slice(2, 6)}`,
+      status: 'open',
+      source: 'discord',
+      messages: [],
+      createdAt: Date.now(),
+      ...ticket
+    };
+    guild.tickets.unshift(record);
+    guild.tickets = guild.tickets.slice(0, 200);
+    return record;
+  }
+
+  getTicket(guildId, ticketId) {
+    return this.guild(guildId).tickets.find((item) => item.id === ticketId) || null;
+  }
+
+  updateTicket(guildId, ticketId, patch) {
+    const ticket = this.getTicket(guildId, ticketId);
+    if (!ticket) return null;
+    Object.assign(ticket, patch);
+    return ticket;
+  }
+
+  // author: 'user' | 'admin'; viaBot — было ли отправлено в Discord ботом.
+  addTicketMessage(guildId, ticketId, { author, body, viaBot = false } = {}) {
+    const ticket = this.getTicket(guildId, ticketId);
+    if (!ticket) return null;
+    ticket.messages ||= [];
+    const message = { at: Date.now(), author: author || 'admin', body: String(body || ''), viaBot };
+    ticket.messages.push(message);
+    return message;
+  }
+
+  closeTicket(guildId, ticketId) {
+    return this.updateTicket(guildId, ticketId, { status: 'closed', closedAt: Date.now() });
+  }
+
   addModerationAction(guildId, action) {
     const guild = this.guild(guildId);
     guild.moderationHistory.unshift({

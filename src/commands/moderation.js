@@ -136,14 +136,11 @@ const commands = [
       const guildError = requireGuild(interaction);
       if (guildError) return reply(interaction, errorPanel(guildError), { ephemeral: true });
 
-      const ticket = {
-        id: `${Date.now().toString(36)}${Math.random().toString(16).slice(2, 6)}`,
+      const ticket = context.store.addTicket(interaction.guildId, {
         userId: interaction.user.id,
         topic: interaction.options.getString('тема', true),
-        status: 'open',
-        createdAt: Date.now()
-      };
-      context.store.guild(interaction.guildId).tickets.unshift(ticket);
+        source: 'discord'
+      });
       await context.store.save();
       await sendAdminCopy(interaction, context, panel({
         title: 'Новый тикет',
@@ -212,13 +209,12 @@ async function handleComponent(interaction, context) {
   }
 
   if (action === 'ticket') {
-    context.store.guild(interaction.guildId).tickets.unshift({
+    context.store.addTicket(interaction.guildId, {
       id: `report-${report.id}`,
       userId: report.reporterId,
       targetId: report.targetId,
       topic: `Жалоба ${report.id}`,
-      status: 'open',
-      createdAt: Date.now()
+      source: 'discord'
     });
   }
 

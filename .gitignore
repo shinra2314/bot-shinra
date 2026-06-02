@@ -13,3 +13,7 @@ yarn-error.log*
 # Локальные артефакты рендера и агент-конфиг
 tmp/
 .claude/
+
+# Веб-дашборд
+web/node_modules/
+web/dist/
