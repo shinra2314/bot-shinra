@@ -11,7 +11,8 @@ const {
   SectionBuilder,
   StringSelectMenuBuilder,
   TextDisplayBuilder,
-  ThumbnailBuilder
+  ThumbnailBuilder,
+  UserSelectMenuBuilder
 } = require('discord.js');
 
 const { DOMAIN, hexToInt } = require('../services/canvas/theme');
@@ -283,6 +284,14 @@ function roleSelect(customId, placeholder, minValues = 0, maxValues = 5) {
     .setMaxValues(maxValues);
 }
 
+function userSelect(customId, placeholder, minValues = 1, maxValues = 1) {
+  return new UserSelectMenuBuilder()
+    .setCustomId(customId)
+    .setPlaceholder(placeholder)
+    .setMinValues(minValues)
+    .setMaxValues(maxValues);
+}
+
 function componentFlags(ephemeral = false) {
   return ephemeral
     ? MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral
@@ -397,5 +406,6 @@ module.exports = {
   successPanel,
   text,
   update,
+  userSelect,
   warningPanel
 };

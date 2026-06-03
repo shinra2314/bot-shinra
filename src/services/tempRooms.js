@@ -1,4 +1,6 @@
 const { ChannelType, PermissionFlagsBits } = require('discord.js');
+const { componentPayload } = require('../ui/components');
+const { roomPanel } = require('../ui/roomPanel');
 
 function createTempRooms(context) {
   const { config, store } = context;
@@ -28,16 +30,27 @@ function createTempRooms(context) {
         reason: 'Temporary voice room'
       });
 
-      store.guild(guild.id).tempRooms[channel.id] = {
+      const room = {
         channelId: channel.id,
         ownerId: member.id,
         createdAt: Date.now(),
         locked: false,
         hidden: false,
-        pinnedUntil: 0
+        pinnedUntil: 0,
+        whitelist: [],
+        bitrate: channel.bitrate,
+        region: channel.rtcRegion || null
       };
+      store.guild(guild.id).tempRooms[channel.id] = room;
       await store.save();
       await member.voice.setChannel(channel).catch(() => null);
+
+      // Авто-панель в текст-чат голосового канала — владельцу не надо искать /room панель.
+      await channel
+        .send(componentPayload(roomPanel({ channelId: channel.id, channel, room }), {
+          allowedMentions: { users: [member.id] }
+        }))
+        .catch(() => null);
       return;
     }
 

@@ -112,8 +112,7 @@ const commands = [
       const fee = Math.ceil(listing.price * COMMISSION);
       buyer.balance -= listing.price;
       if (seller) seller.balance = Number(seller.balance || 0) + listing.price - fee;
-      buyer.inventory ||= [];
-      buyer.inventory.push(`${listing.type}: ${listing.name}`);
+      context.store.addInventoryItem(interaction.guildId, interaction.user.id, { type: listing.type, name: listing.name, source: 'market' });
       listing.status = 'sold';
       listing.buyerId = interaction.user.id;
       listing.soldAt = Date.now();
@@ -176,7 +175,7 @@ const commands = [
           title: 'Аукционы Onix',
           icon: '🔨',
           eyebrow: 'Аукционы Onix',
-          description: 'Ставки блокируют монеты только логически, списание происходит при завершении вручную в следующем этапе.',
+          description: 'Ставка сразу списывает монеты; при перебитии прежнему лидеру возвращают. По истечении 24 часов предмет уходит победителю автоматически.',
           color: COLORS.economy,
           lines: rows.length ? rows : ['Активных аукционов нет.']
         }));
@@ -202,7 +201,16 @@ const commands = [
       const amount = interaction.options.getInteger('сумма', true);
       if (amount <= (auction.currentBid || auction.startPrice)) return reply(interaction, errorPanel('Ставка должна быть выше текущей.'), { ephemeral: true });
       const bidder = context.store.ensureUser(interaction.guildId, interaction.user);
+
+      // Ставка сразу замораживает монеты. Сначала возвращаем прежнему лидеру его
+      // ставку (это может быть и сам бидер при поднятии цены — getUser вернёт тот
+      // же объект), затем проверяем баланс и списываем новую сумму.
+      if (auction.currentBidderId) {
+        const prev = context.store.getUser(interaction.guildId, auction.currentBidderId);
+        if (prev) prev.balance = Number(prev.balance || 0) + Number(auction.currentBid || 0);
+      }
       if (bidder.balance < amount) return reply(interaction, errorPanel('У тебя не хватает монет на такую ставку.'), { ephemeral: true });
+      bidder.balance -= amount;
 
       auction.currentBid = amount;
       auction.currentBidderId = interaction.user.id;

@@ -30,7 +30,7 @@ Every file in `src/commands/*.js` (except `index.js`) exports `{ commands: [...]
 
 ### Persistence
 
-`src/services/jsonStore.js` is the single source of truth for persisted state — balances, cases, stats, personal roles, transactions, voice online time, clan data, etc. It reads/writes `data/database.json` (path configurable via `DATABASE_PATH`). Mutations are in-memory; call `store.save()` to flush. The main loop flushes on `ClientReady`, after clan-war message scoring, and during SIGINT/SIGTERM shutdown. New persisted fields should go through `JsonStore` methods, not direct JSON access.
+`src/services/store.js` (`Store` class, SQLite via `src/services/db.js`) is the single source of truth for persisted state — balances, cases, stats, personal roles, transactions, voice online time, clan data, temp rooms, inventory, etc. It stores one JSON blob per guild in SQLite (DB path configurable via `DATABASE_PATH`). Mutations are in-memory; call `store.save()` to flush. The main loop in `src/index.js` flushes on `ClientReady`, every 30s when the `dirty` flag is set (message counting, etc.), after the auction-settlement pass, and during SIGINT/SIGTERM shutdown. New persisted fields should go through `Store` methods, not direct JSON access.
 
 ### Services
 

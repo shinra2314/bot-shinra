@@ -26,6 +26,17 @@ async function announceAchievement(channel, user, entry) {
   await channel.send(componentPayload(panel, { files: card?.files, allowedMentions: { users: [user.id] } }));
 }
 
+// Чистим «мёртвые» записи комнат: если голосовой канал удалён вручную, запись в
+// БД остаётся навсегда. На старте проходим по кэшу каналов и сносим осиротевшее.
+function cleanupDeadRooms(client, store) {
+  for (const guild of client.guilds.cache.values()) {
+    const rooms = store.guild(guild.id).tempRooms;
+    for (const channelId of Object.keys(rooms)) {
+      if (!guild.channels.cache.has(channelId)) delete rooms[channelId];
+    }
+  }
+}
+
 function validateConfig(config) {
   const warnings = [];
   if (!config.clientId) warnings.push('DISCORD_CLIENT_ID is missing: deploy will fail.');
@@ -100,10 +111,20 @@ async function main() {
     for (const warning of validateConfig(config)) console.warn(warning);
     voiceTracker.hydrate(readyClient);
     await loadIcons().catch((error) => console.error('Icon preload error:', error));
+    cleanupDeadRooms(readyClient, store);
     await store.save();
     setInterval(() => {
-      if (!dirty) return;
+      let changed = dirty;
       dirty = false;
+      // Авто-расчёт истёкших аукционов по всем гильдиям (best-effort).
+      for (const guild of readyClient.guilds.cache.values()) {
+        try {
+          if (store.settleExpiredAuctions(guild.id).length) changed = true;
+        } catch (error) {
+          console.error('Auction settle error:', error);
+        }
+      }
+      if (!changed) return;
       store.save().catch((error) => console.error('Periodic save error:', error));
     }, 30000);
     console.log(`Logged in as ${readyClient.user.tag}.`);
@@ -160,8 +181,9 @@ async function main() {
       }
 
       const isRoleSelect = typeof interaction.isRoleSelectMenu === 'function' && interaction.isRoleSelectMenu();
+      const isUserSelect = typeof interaction.isUserSelectMenu === 'function' && interaction.isUserSelectMenu();
       const isModal = typeof interaction.isModalSubmit === 'function' && interaction.isModalSubmit();
-      if (interaction.isButton() || interaction.isStringSelectMenu() || isRoleSelect || isModal) {
+      if (interaction.isButton() || interaction.isStringSelectMenu() || isRoleSelect || isUserSelect || isModal) {
         const handled = await handleComponent(interaction, context);
         if (!handled) {
           return reply(interaction, errorPanel('Этот компонент уже не обрабатывается.'), { ephemeral: true });

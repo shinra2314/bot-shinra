@@ -843,6 +843,55 @@ class Store {
     return this.guild(guildId).auctions.filter((item) => item.status === 'active' && item.endsAt > Date.now());
   }
 
+  // Структурированный предмет инвентаря. Старые записи — строки "type: name",
+  // читаются толерантно в местах отображения.
+  addInventoryItem(guildId, userId, { type, name, source = 'system' }) {
+    const profile = this.guild(guildId).users[userId];
+    if (!profile) return null;
+    profile.inventory ||= [];
+    const item = {
+      id: `${Date.now().toString(36)}${Math.random().toString(16).slice(2, 6)}`,
+      type,
+      name,
+      source,
+      at: Date.now()
+    };
+    profile.inventory.push(item);
+    return item;
+  }
+
+  // Расчёт истёкших аукционов: предмет победителю, деньги продавцу минус комиссия.
+  // Списание у победителя уже произошло при ставке (market.js). Возвращает
+  // список рассчитанных аукционов (пусто, если нечего считать).
+  settleExpiredAuctions(guildId, commission = 0.08) {
+    const guild = this.guild(guildId);
+    const now = Date.now();
+    const settled = [];
+    for (const auction of guild.auctions) {
+      if (auction.status !== 'active' || Number(auction.endsAt || 0) > now) continue;
+      if (auction.currentBidderId) {
+        this.addInventoryItem(guildId, auction.currentBidderId, { type: auction.type, name: auction.name, source: 'auction' });
+        const fee = Math.ceil(auction.currentBid * commission);
+        const seller = this.getUser(guildId, auction.sellerId);
+        if (seller) seller.balance = Number(seller.balance || 0) + auction.currentBid - fee;
+        this.recordTransaction(guildId, {
+          type: 'auction',
+          fromId: auction.currentBidderId,
+          toId: auction.sellerId,
+          amount: auction.currentBid,
+          note: `аукцион: ${auction.name}, комиссия ${fee}`
+        });
+        auction.status = 'sold';
+        auction.winnerId = auction.currentBidderId;
+      } else {
+        auction.status = 'expired';
+      }
+      auction.settledAt = now;
+      settled.push(auction);
+    }
+    return settled;
+  }
+
   addEvent(guildId, event) {
     const guild = this.guild(guildId);
     guild.events.unshift({

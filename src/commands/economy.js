@@ -373,6 +373,15 @@ function inventoryPrompt(user) {
   });
 }
 
+// Инвентарь хранит и старые строки "type: name", и новые объекты { type, name }.
+function formatInventory(list) {
+  if (!list?.length) return 'пусто';
+  return list
+    .map((item) => (typeof item === 'string' ? item.split(':').slice(1).join(':').trim() || item : item.name))
+    .filter(Boolean)
+    .join(', ');
+}
+
 function inventoryView(context, guildId, user, profile, view) {
   const titles = {
     roles: 'Личные роли',
@@ -395,7 +404,7 @@ function inventoryView(context, guildId, user, profile, view) {
       `**Обычные кейсы:** ${profile.cases.common || 0}`,
       `**Редкие кейсы:** ${profile.cases.rare || 0}`,
       `**Эпические кейсы:** ${profile.cases.epic || 0}`,
-      `**Прочее:** ${profile.inventory?.length ? profile.inventory.join(', ') : 'пусто'}`
+      `**Прочее:** ${formatInventory(profile.inventory)}`
     ]
   };
 

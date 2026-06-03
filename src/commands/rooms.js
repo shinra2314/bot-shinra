@@ -1,5 +1,15 @@
-const { ChannelType, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
-const { COLORS, ICONS, ButtonStyle, button, errorPanel, panel, reply, successPanel, update } = require('../ui/components');
+const {
+  ChannelType,
+  PermissionFlagsBits,
+  SlashCommandBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ActionRowBuilder
+} = require('discord.js');
+const { ButtonStyle, COLORS, ICONS, button, errorPanel, panel, reply, select, successPanel, update, userSelect } = require('../ui/components');
+const { roomPanel, BITRATE_PRESETS, REGION_OPTIONS } = require('../ui/roomPanel');
+const { grantOwnerPerms, revokeOwnerPerms } = require('../utils/roomPerms');
 const { formatCoins, mentionUser } = require('../utils/format');
 
 function requireGuild(interaction) {
@@ -13,29 +23,6 @@ function findRoom(context, interaction, ownerId = interaction.user.id) {
   return { channelId, room, channel: interaction.guild.channels.cache.get(channelId) };
 }
 
-function roomPanel(roomData) {
-  return panel({
-    title: 'Панель личной комнаты',
-    icon: ICONS.voice,
-    eyebrow: 'Комнаты Onix',
-    description: `Комната: ${roomData.channel ? `<#${roomData.channel.id}>` : 'не найдена'}\nВладелец: ${mentionUser(roomData.room.ownerId)}`,
-    color: COLORS.info,
-    stats: [
-      { icon: roomData.room.locked ? '🔒' : '🔓', name: 'Закрыта', value: roomData.room.locked ? 'да' : 'нет' },
-      { icon: '👁️', name: 'Скрыта', value: roomData.room.hidden ? 'да' : 'нет' },
-      { icon: ICONS.profile, name: 'Лимит', value: String(roomData.channel?.userLimit || 'без лимита') }
-    ],
-    statColumns: 2,
-    actions: [
-      button(`room:lock:${roomData.channelId}`, 'Закрыть', ButtonStyle.Secondary, roomData.room.locked),
-      button(`room:open:${roomData.channelId}`, 'Открыть', ButtonStyle.Success, !roomData.room.locked),
-      button(`room:hide:${roomData.channelId}`, 'Скрыть', ButtonStyle.Secondary, roomData.room.hidden),
-      button(`room:show:${roomData.channelId}`, 'Показать', ButtonStyle.Primary, !roomData.room.hidden),
-      button(`room:delete:${roomData.channelId}`, 'Удалить', ButtonStyle.Danger)
-    ]
-  });
-}
-
 async function requireOwner(interaction, context, channelId) {
   const room = context.store.guild(interaction.guildId).tempRooms[channelId];
   if (!room) return { error: 'Комната не найдена.' };
@@ -45,6 +32,15 @@ async function requireOwner(interaction, context, channelId) {
   const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
   if (!channel || channel.type !== ChannelType.GuildVoice) return { error: 'Голосовой канал не найден.' };
   return { room, channel };
+}
+
+// Передача владельца: синхронизируем права канала, иначе старый владелец
+// остаётся с ManageChannels, а новый ничего не получает.
+async function transferOwner(channel, room, oldOwnerId, newOwnerId, store, guildId) {
+  await grantOwnerPerms(channel, newOwnerId);
+  if (oldOwnerId && oldOwnerId !== newOwnerId) await revokeOwnerPerms(channel, oldOwnerId);
+  room.ownerId = newOwnerId;
+  await store.save();
 }
 
 const commands = [
@@ -112,8 +108,7 @@ const commands = [
 
       if (subcommand === 'передать') {
         const target = interaction.options.getUser('user', true);
-        roomData.room.ownerId = target.id;
-        await context.store.save();
+        await transferOwner(roomData.channel, roomData.room, interaction.user.id, target.id, context.store, interaction.guildId);
         return reply(interaction, successPanel(`Владелец комнаты теперь ${mentionUser(target.id)}.`), { ephemeral: true });
       }
 
@@ -133,8 +128,57 @@ const commands = [
   }
 ];
 
+// Эфемерная подсказка с user-select для выбора участника.
+function userPickPanel(channelId, action, title, placeholder) {
+  return panel({
+    title,
+    icon: ICONS.voice,
+    eyebrow: 'Комнаты Onix',
+    description: 'Выбери пользователя в меню ниже.',
+    color: COLORS.info,
+    actions: [userSelect(`room:${action}:${channelId}`, placeholder, 1, action === 'whitelist-pick' ? 10 : 1)]
+  });
+}
+
+function renameModal(channelId) {
+  return new ModalBuilder()
+    .setCustomId(`room:rename-submit:${channelId}`)
+    .setTitle('Название комнаты')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('name')
+          .setLabel('Новое название')
+          .setStyle(TextInputStyle.Short)
+          .setMinLength(2)
+          .setMaxLength(90)
+          .setRequired(true)
+      )
+    );
+}
+
+function limitModal(channelId) {
+  return new ModalBuilder()
+    .setCustomId(`room:limit-submit:${channelId}`)
+    .setTitle('Лимит участников')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('limit')
+          .setLabel('Число (0 = без лимита, до 99)')
+          .setStyle(TextInputStyle.Short)
+          .setMinLength(1)
+          .setMaxLength(2)
+          .setRequired(true)
+      )
+    );
+}
+
 async function handleComponent(interaction, context) {
-  if (!interaction.isButton()) return false;
+  const isModal = interaction.isModalSubmit?.();
+  const isUserSel = interaction.isUserSelectMenu?.();
+  const isStringSel = interaction.isStringSelectMenu?.();
+  if (!interaction.isButton() && !isModal && !isUserSel && !isStringSel) return false;
   if (!interaction.customId.startsWith('room:')) return false;
 
   const [, action, channelId] = interaction.customId.split(':');
@@ -143,8 +187,146 @@ async function handleComponent(interaction, context) {
     await reply(interaction, errorPanel(result.error), { ephemeral: true });
     return true;
   }
-
   const { channel, room } = result;
+  const guildId = interaction.guildId;
+
+  // --- Открыватели (кнопки, ведущие к модалке / эфемерному селекту) ---
+  if (action === 'rename') {
+    await interaction.showModal(renameModal(channelId));
+    return true;
+  }
+  if (action === 'limit') {
+    await interaction.showModal(limitModal(channelId));
+    return true;
+  }
+  if (action === 'bitrate') {
+    await reply(interaction, panel({
+      title: 'Битрейт комнаты',
+      icon: ICONS.voice,
+      eyebrow: 'Комнаты Onix',
+      description: 'Выбери битрейт. Высокие значения требуют буста сервера.',
+      color: COLORS.info,
+      actions: [select(`room:bitrate-pick:${channelId}`, 'Битрейт', BITRATE_PRESETS.map((kbps) => ({ label: `${kbps} kbps`, value: String(kbps) })))]
+    }), { ephemeral: true });
+    return true;
+  }
+  if (action === 'region') {
+    await reply(interaction, panel({
+      title: 'Регион комнаты',
+      icon: ICONS.voice,
+      eyebrow: 'Комнаты Onix',
+      description: 'Выбери голосовой регион.',
+      color: COLORS.info,
+      actions: [select(`room:region-pick:${channelId}`, 'Регион', REGION_OPTIONS)]
+    }), { ephemeral: true });
+    return true;
+  }
+  if (action === 'transfer') {
+    await reply(interaction, userPickPanel(channelId, 'transfer-pick', 'Передать комнату', 'Новый владелец'), { ephemeral: true });
+    return true;
+  }
+  if (action === 'kick') {
+    await reply(interaction, userPickPanel(channelId, 'kick-pick', 'Кикнуть из комнаты', 'Кого кикнуть'), { ephemeral: true });
+    return true;
+  }
+  if (action === 'whitelist') {
+    await reply(interaction, panel({
+      title: 'Вайтлист комнаты',
+      icon: ICONS.voice,
+      eyebrow: 'Комнаты Onix',
+      description: room.whitelist?.length
+        ? `В вайтлисте: ${room.whitelist.map((id) => mentionUser(id)).join(', ')}`
+        : 'Вайтлист пуст. Выбери, кого впустить в закрытую комнату.',
+      color: COLORS.info,
+      actions: [
+        userSelect(`room:whitelist-pick:${channelId}`, 'Кого впустить', 1, 10),
+        button(`room:whitelist-clear:${channelId}`, 'Очистить вайтлист', ButtonStyle.Danger)
+      ]
+    }), { ephemeral: true });
+    return true;
+  }
+
+  // --- Сабмиты модалок ---
+  if (action === 'rename-submit') {
+    const name = interaction.fields.getTextInputValue('name').trim().slice(0, 90);
+    await channel.setName(name, 'Room owner renamed room').catch(() => null);
+    await reply(interaction, successPanel(`Комната переименована в **${name}**.`), { ephemeral: true });
+    return true;
+  }
+  if (action === 'limit-submit') {
+    const raw = Number.parseInt(interaction.fields.getTextInputValue('limit').trim(), 10);
+    if (!Number.isInteger(raw) || raw < 0 || raw > 99) {
+      await reply(interaction, errorPanel('Лимит должен быть числом от 0 до 99.'), { ephemeral: true });
+      return true;
+    }
+    await channel.setUserLimit(raw, 'Room owner changed limit').catch(() => null);
+    await reply(interaction, successPanel(`Лимит комнаты: **${raw || 'без лимита'}**.`), { ephemeral: true });
+    return true;
+  }
+
+  // --- Сабмиты селектов ---
+  if (action === 'bitrate-pick') {
+    const kbps = Number(interaction.values[0]);
+    try {
+      await channel.setBitrate(kbps * 1000, 'Room owner changed bitrate');
+      room.bitrate = kbps * 1000;
+      await context.store.save();
+      await update(interaction, successPanel(`Битрейт комнаты: **${kbps} kbps**.`, 'Битрейт'));
+    } catch {
+      await update(interaction, errorPanel('Не удалось задать битрейт — возможно, нужен буст сервера.'));
+    }
+    return true;
+  }
+  if (action === 'region-pick') {
+    const value = interaction.values[0];
+    try {
+      await channel.setRTCRegion(value === 'auto' ? null : value, 'Room owner changed region');
+      room.region = value === 'auto' ? null : value;
+      await context.store.save();
+      await update(interaction, successPanel(`Регион комнаты: **${value === 'auto' ? 'авто' : value}**.`, 'Регион'));
+    } catch {
+      await update(interaction, errorPanel('Не удалось сменить регион.'));
+    }
+    return true;
+  }
+  if (action === 'transfer-pick') {
+    const newOwnerId = interaction.values[0];
+    await transferOwner(channel, room, room.ownerId, newOwnerId, context.store, guildId);
+    await update(interaction, successPanel(`Владелец комнаты теперь ${mentionUser(newOwnerId)}.`, 'Передача комнаты'));
+    return true;
+  }
+  if (action === 'kick-pick') {
+    const targetId = interaction.values[0];
+    const target = await interaction.guild.members.fetch(targetId).catch(() => null);
+    if (!target?.voice?.channelId || target.voice.channelId !== channelId) {
+      await update(interaction, errorPanel('Пользователь не находится в твоей комнате.'));
+      return true;
+    }
+    await target.voice.disconnect('Room owner kick').catch(() => null);
+    await update(interaction, successPanel(`${mentionUser(targetId)} кикнут из комнаты.`, 'Кик'));
+    return true;
+  }
+  if (action === 'whitelist-pick') {
+    room.whitelist ||= [];
+    for (const userId of interaction.values) {
+      await channel.permissionOverwrites.edit(userId, { Connect: true, ViewChannel: true }).catch(() => null);
+      if (!room.whitelist.includes(userId)) room.whitelist.push(userId);
+    }
+    await context.store.save();
+    await update(interaction, successPanel(`Впущено в комнату: ${interaction.values.map((id) => mentionUser(id)).join(', ')}.`, 'Вайтлист'));
+    return true;
+  }
+  if (action === 'whitelist-clear') {
+    for (const userId of room.whitelist || []) {
+      await channel.permissionOverwrites.delete(userId).catch(() => null);
+    }
+    room.whitelist = [];
+    await context.store.save();
+    await update(interaction, successPanel('Вайтлист очищен.', 'Вайтлист'));
+    return true;
+  }
+
+  // --- Прямые кнопки на панели ---
   if (action === 'lock') {
     await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { Connect: false });
     room.locked = true;
@@ -162,7 +344,7 @@ async function handleComponent(interaction, context) {
     room.hidden = false;
   }
   if (action === 'delete') {
-    delete context.store.guild(interaction.guildId).tempRooms[channelId];
+    delete context.store.guild(guildId).tempRooms[channelId];
     await context.store.save();
     await channel.delete('Room owner deleted room').catch(() => null);
     await update(interaction, successPanel('Комната удалена.', 'Личная комната'));
