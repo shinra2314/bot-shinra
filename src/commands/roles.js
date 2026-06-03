@@ -25,11 +25,12 @@ function refundRoleCost(context, guildId, user, profile, usedPass) {
     return;
   }
 
-  profile.balance = Number(profile.balance || 0) + context.config.personalRolePrice;
+  const rolePrice = context.store.economySetting(guildId, 'personalRolePrice');
+  profile.balance = Number(profile.balance || 0) + rolePrice;
   context.store.recordTransaction(guildId, {
     type: 'role_refund',
     toId: user.id,
-    amount: context.config.personalRolePrice,
+    amount: rolePrice,
     note: 'refund personal role create'
   });
 }
@@ -118,22 +119,23 @@ const commands = [
           return reply(interaction, errorPanel('Цвет должен быть в формате `#RRGGBB`.'), { ephemeral: true });
         }
 
+        const rolePrice = context.store.economySetting(interaction.guildId, 'personalRolePrice');
         let usedPass = false;
         if (Number(profile.rolePasses || 0) > 0) {
           profile.rolePasses -= 1;
           usedPass = true;
-        } else if (profile.balance >= context.config.personalRolePrice) {
-          profile.balance -= context.config.personalRolePrice;
+        } else if (profile.balance >= rolePrice) {
+          profile.balance -= rolePrice;
           context.store.recordTransaction(interaction.guildId, {
             type: 'role',
             fromId: interaction.user.id,
-            amount: context.config.personalRolePrice,
+            amount: rolePrice,
             note: 'personal role create'
           });
         } else {
           return reply(
             interaction,
-            errorPanel(`Нужно ${formatCoins(context.config.personalRolePrice)} или купон личной роли.`),
+            errorPanel(`Нужно ${formatCoins(rolePrice)} или купон личной роли.`),
             { ephemeral: true }
           );
         }
@@ -172,7 +174,7 @@ const commands = [
         return reply(
           interaction,
           successPanel(
-            `Создана роль ${role}. ${usedPass ? 'Использован купон.' : `Списано ${formatCoins(context.config.personalRolePrice)}.`}`,
+            `Создана роль ${role}. ${usedPass ? 'Использован купон.' : `Списано ${formatCoins(rolePrice)}.`}`,
             'Личная роль создана'
           ),
           { ephemeral: true }

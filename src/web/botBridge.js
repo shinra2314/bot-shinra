@@ -22,7 +22,7 @@ async function sendToChannel(client, channelId, payload) {
     if (!channel.isTextBased?.()) return { ok: false, error: 'NOT_TEXT_CHANNEL' };
     try {
       await channel.send(data);
-      return { ok: true };
+      return { ok: true, guildId: channel.guild?.id || null, channelName: channel.name || null };
     } catch (error) {
       return { ok: false, error: error.message || 'SEND_FAILED' };
     }

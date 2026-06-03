@@ -25,9 +25,22 @@ function createGuildData() {
     reports: [],
     moderationHistory: [],
     tickets: [],
-    tempRooms: {}
+    auditLog: [],
+    settings: {},
+    tempRooms: {},
+    roomPanelMessageId: null
   };
 }
+
+// Ключи экономики, которые можно переопределять per-guild через дашборд.
+// Значение по умолчанию берётся из config (env). value === null/NaN ⇒ дефолт.
+const ECONOMY_SETTING_KEYS = [
+  'startBalance',
+  'timelyReward',
+  'timelySnowballs',
+  'timelyCooldownHours',
+  'personalRolePrice'
+];
 
 // Окно хранения событий активности и потолок их числа на пользователя.
 const ACTIVITY_MAX_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -212,19 +225,23 @@ class Store {
     this.data.guilds[id].reports ||= [];
     this.data.guilds[id].moderationHistory ||= [];
     this.data.guilds[id].tickets ||= [];
+    this.data.guilds[id].auditLog ||= [];
+    this.data.guilds[id].settings ||= {};
     this.data.guilds[id].tempRooms ||= {};
+    if (this.data.guilds[id].roomPanelMessageId === undefined) this.data.guilds[id].roomPanelMessageId = null;
     return this.data.guilds[id];
   }
 
   ensureUser(guildId, user) {
     const guild = this.guild(guildId);
+    const startBalance = this.economySetting(guildId, 'startBalance');
     if (!guild.users[user.id]) {
-      guild.users[user.id] = createUserData(user, this.config.startBalance);
+      guild.users[user.id] = createUserData(user, startBalance);
     }
 
     guild.users[user.id].username = user.globalName || user.username || guild.users[user.id].username;
     guild.users[user.id].id = user.id;
-    guild.users[user.id].balance ??= this.config.startBalance;
+    guild.users[user.id].balance ??= startBalance;
     guild.users[user.id].lotuses ??= 0;
     guild.users[user.id].snowballs ??= 0;
     guild.users[user.id].reputation ??= 0;
@@ -598,6 +615,72 @@ class Store {
     return report;
   }
 
+  // ---- Audit-log (журнал админ-действий) ----
+  // Пишут и Discord-команды, и веб-дашборд. entry: { action, actor, targetId?, detail? }.
+  // actor — 'web' для действий с дашборда либо id модератора.
+  addAuditEntry(guildId, entry) {
+    const guild = this.guild(guildId);
+    guild.auditLog ||= [];
+    const record = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      createdAt: Date.now(),
+      ...entry
+    };
+    guild.auditLog.unshift(record);
+    guild.auditLog = guild.auditLog.slice(0, 300);
+    return record;
+  }
+
+  auditLog(guildId, limit = 100) {
+    return this.guild(guildId).auditLog.slice(0, limit);
+  }
+
+  // ---- Настройки экономики (per-guild override поверх config) ----
+  // Возвращает эффективное значение: override из guild.settings либо дефолт из config.
+  economySetting(guildId, key) {
+    const override = this.guild(guildId).settings?.[key];
+    if (typeof override === 'number' && Number.isFinite(override)) return override;
+    return this.config[key];
+  }
+
+  // Установить/сбросить override. value === null ⇒ вернуть к дефолту config.
+  setEconomySetting(guildId, key, value) {
+    if (!ECONOMY_SETTING_KEYS.includes(key)) return null;
+    const settings = this.guild(guildId).settings ||= {};
+    if (value === null || value === undefined) {
+      delete settings[key];
+    } else {
+      const num = Number(value);
+      if (!Number.isFinite(num) || num < 0) return null;
+      settings[key] = num;
+    }
+    return this.economySetting(guildId, key);
+  }
+
+  // Сводка для дашборда: по каждому ключу { value, default, overridden }.
+  economySettings(guildId) {
+    const overrides = this.guild(guildId).settings || {};
+    const result = {};
+    for (const key of ECONOMY_SETTING_KEYS) {
+      const overridden = typeof overrides[key] === 'number' && Number.isFinite(overrides[key]);
+      result[key] = {
+        value: overridden ? overrides[key] : this.config[key],
+        default: this.config[key],
+        overridden
+      };
+    }
+    return result;
+  }
+
+  // ---- Статичная панель управления комнатами (id сообщения для обновления) ----
+  getRoomPanelMessage(guildId) {
+    return this.guild(guildId).roomPanelMessageId || null;
+  }
+
+  setRoomPanelMessage(guildId, messageId) {
+    this.guild(guildId).roomPanelMessageId = messageId || null;
+  }
+
   // ---- Тикеты (обращения) ----
   // Единый источник правды для тикетов: и Discord-команды, и веб-дашборд
   // ходят через эти методы. Старые тикеты без messages/source остаются валидны.
@@ -950,3 +1033,4 @@ class Store {
 }
 
 module.exports = Store;
+module.exports.ECONOMY_SETTING_KEYS = ECONOMY_SETTING_KEYS;

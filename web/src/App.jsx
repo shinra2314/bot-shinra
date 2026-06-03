@@ -6,12 +6,18 @@ import Tickets from './pages/Tickets.jsx';
 import TicketDetail from './pages/TicketDetail.jsx';
 import Reports from './pages/Reports.jsx';
 import Composer from './pages/Composer.jsx';
+import Audit from './pages/Audit.jsx';
+import Users from './pages/Users.jsx';
+import Settings from './pages/Settings.jsx';
 
 const NAV = [
   { to: '/', label: 'Обзор', icon: '📊', end: true },
+  { to: '/users', label: 'Пользователи', icon: '👥' },
   { to: '/tickets', label: 'Тикеты', icon: '🎫' },
   { to: '/reports', label: 'Жалобы', icon: '🛡️' },
-  { to: '/compose', label: 'Отправить', icon: '✈️' }
+  { to: '/compose', label: 'Отправить', icon: '✈️' },
+  { to: '/audit', label: 'Аудит', icon: '📜' },
+  { to: '/settings', label: 'Экономика', icon: '⚙️' }
 ];
 
 export default function App() {
@@ -57,10 +63,13 @@ export default function App() {
 
         <Routes>
           <Route path="/" element={<Overview ctx={ctx} />} />
+          <Route path="/users" element={<Users ctx={ctx} />} />
           <Route path="/tickets" element={<Tickets ctx={ctx} />} />
           <Route path="/tickets/:id" element={<TicketDetail ctx={ctx} />} />
           <Route path="/reports" element={<Reports ctx={ctx} />} />
           <Route path="/compose" element={<Composer ctx={ctx} />} />
+          <Route path="/audit" element={<Audit ctx={ctx} />} />
+          <Route path="/settings" element={<Settings ctx={ctx} />} />
         </Routes>
       </main>
     </div>

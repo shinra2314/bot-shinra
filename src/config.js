@@ -42,6 +42,10 @@ module.exports = {
   reportChannelId: process.env.REPORT_CHANNEL_ID || process.env.ADMIN_CHANNEL_ID || null,
   tempRoomTriggerChannelId: process.env.TEMP_ROOM_TRIGGER_CHANNEL_ID || null,
   tempRoomCategoryId: process.env.TEMP_ROOM_CATEGORY_ID || null,
+  // Текстовый канал, куда бот постит статичную панель управления комнатами (для всех).
+  roomPanelChannelId: process.env.ROOM_PANEL_CHANNEL_ID || '1308371582426681416',
+  // Цена покупки личной (постоянной) комнаты в магазине.
+  roomPrice: numberFromEnv('ROOM_PRICE', 10000),
   databasePath: path.resolve(projectRoot, process.env.DATABASE_PATH || 'data/onix.db'),
   redisUrl: process.env.REDIS_URL || null,
   // Веб-дашборд. Без авторизации — по умолчанию слушаем только localhost.

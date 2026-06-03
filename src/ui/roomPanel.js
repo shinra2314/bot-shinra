@@ -23,34 +23,42 @@ const REGION_OPTIONS = [
 function roomPanel(roomData) {
   const { channel, room, channelId } = roomData;
   const whitelistCount = room.whitelist?.length || 0;
+  const pinned = Number(room.pinnedUntil || 0) > Date.now();
+  const persistence = room.persistent ? 'постоянная' : pinned ? 'закреплена' : 'временная';
+
   return panel({
-    title: 'Панель личной комнаты',
+    title: channel?.name || 'Личная комната',
     icon: ICONS.voice,
-    eyebrow: 'Комнаты Onix',
-    description: `Комната: ${channel ? `<#${channel.id}>` : 'не найдена'}\nВладелец: ${mentionUser(room.ownerId)}`,
-    color: COLORS.info,
+    eyebrow: 'Управление комнатой · Onix',
+    description: [
+      `${ICONS.voice} Канал: ${channel ? `<#${channel.id}>` : 'не найден'}`,
+      `${ICONS.profile} Владелец: ${mentionUser(room.ownerId)}`
+    ].join('\n'),
+    color: room.locked ? COLORS.warning : COLORS.info,
     stats: [
-      { icon: room.locked ? '🔒' : '🔓', name: 'Закрыта', value: room.locked ? 'да' : 'нет' },
-      { icon: '👁️', name: 'Скрыта', value: room.hidden ? 'да' : 'нет' },
-      { icon: ICONS.profile, name: 'Лимит', value: String(channel?.userLimit || 'нет') },
+      { icon: room.locked ? '🔒' : '🔓', name: 'Доступ', value: room.locked ? 'закрыта' : 'открыта' },
+      { icon: '👁️', name: 'Видимость', value: room.hidden ? 'скрыта' : 'видна' },
+      { icon: '👥', name: 'Лимит', value: String(channel?.userLimit || 'нет') },
       { icon: '🎚️', name: 'Битрейт', value: `${Math.round((channel?.bitrate || 64000) / 1000)} kbps` },
       { icon: '🌐', name: 'Регион', value: channel?.rtcRegion || 'авто' },
-      { icon: '✅', name: 'Вайтлист', value: String(whitelistCount) }
+      { icon: '✅', name: 'Вайтлист', value: String(whitelistCount) },
+      { icon: '📌', name: 'Тип', value: persistence }
     ],
     statColumns: 2,
+    footer: 'Управлять может только владелец комнаты.',
     actions: [
-      button(`room:lock:${channelId}`, 'Закрыть', ButtonStyle.Secondary, room.locked),
-      button(`room:open:${channelId}`, 'Открыть', ButtonStyle.Success, !room.locked),
-      button(`room:hide:${channelId}`, 'Скрыть', ButtonStyle.Secondary, room.hidden),
-      button(`room:show:${channelId}`, 'Показать', ButtonStyle.Primary, !room.hidden),
-      button(`room:rename:${channelId}`, 'Название', ButtonStyle.Secondary),
-      button(`room:limit:${channelId}`, 'Лимит', ButtonStyle.Secondary),
-      button(`room:bitrate:${channelId}`, 'Битрейт', ButtonStyle.Secondary),
-      button(`room:region:${channelId}`, 'Регион', ButtonStyle.Secondary),
-      button(`room:whitelist:${channelId}`, 'Вайтлист', ButtonStyle.Secondary),
-      button(`room:kick:${channelId}`, 'Кикнуть', ButtonStyle.Secondary),
-      button(`room:transfer:${channelId}`, 'Передать', ButtonStyle.Secondary),
-      button(`room:delete:${channelId}`, 'Удалить', ButtonStyle.Danger)
+      button(`room:lock:${channelId}`, '🔒 Закрыть', ButtonStyle.Secondary, room.locked),
+      button(`room:open:${channelId}`, '🔓 Открыть', ButtonStyle.Success, !room.locked),
+      button(`room:hide:${channelId}`, '🙈 Скрыть', ButtonStyle.Secondary, room.hidden),
+      button(`room:show:${channelId}`, '👁️ Показать', ButtonStyle.Primary, !room.hidden),
+      button(`room:rename:${channelId}`, '✏️ Название', ButtonStyle.Secondary),
+      button(`room:limit:${channelId}`, '👥 Лимит', ButtonStyle.Secondary),
+      button(`room:bitrate:${channelId}`, '🎚️ Битрейт', ButtonStyle.Secondary),
+      button(`room:region:${channelId}`, '🌐 Регион', ButtonStyle.Secondary),
+      button(`room:whitelist:${channelId}`, '✅ Вайтлист', ButtonStyle.Secondary),
+      button(`room:kick:${channelId}`, '🚪 Кикнуть', ButtonStyle.Secondary),
+      button(`room:transfer:${channelId}`, '👑 Передать', ButtonStyle.Secondary),
+      button(`room:delete:${channelId}`, '🗑️ Удалить', ButtonStyle.Danger)
     ]
   });
 }

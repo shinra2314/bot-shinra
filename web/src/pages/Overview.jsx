@@ -29,7 +29,10 @@ export default function Overview() {
           <div className="eyebrow">Onix · мониторинг</div>
           <h1 className="page-title">Обзор</h1>
         </div>
-        <span className="muted">{data.botTag || '—'}</span>
+        <div className="bot-id">
+          {data.botAvatar && <img className="bot-avatar" src={data.botAvatar} alt="" />}
+          <span className="muted">{data.botTag || '—'}</span>
+        </div>
       </div>
 
       <div className="grid cols-4">

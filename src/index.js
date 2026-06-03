@@ -10,6 +10,7 @@ const { loadIcons } = require('./services/cardRenderer');
 const { buildAchievementCard } = require('./services/profileCard');
 const { createWebServer } = require('./web/server');
 const { COLORS, ICONS, componentPayload, errorPanel, mediaPanel, reply } = require('./ui/components');
+const { roomHubPanel } = require('./ui/roomHubPanel');
 
 // Отправить в канал карточку-уведомление о новом достижении (best-effort).
 async function announceAchievement(channel, user, entry) {
@@ -34,6 +35,32 @@ function cleanupDeadRooms(client, store) {
     for (const channelId of Object.keys(rooms)) {
       if (!guild.channels.cache.has(channelId)) delete rooms[channelId];
     }
+  }
+}
+
+// Постит (или обновляет) статичную панель управления комнатами в канал-хаб.
+// Хранит id сообщения в store, чтобы при рестарте редактировать, а не плодить копии.
+async function syncRoomPanel(client, store, config) {
+  const channelId = config.roomPanelChannelId;
+  if (!channelId) return;
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel?.isTextBased?.()) return;
+  const guildId = channel.guildId || channel.guild?.id;
+  if (!guildId) return;
+
+  const payload = componentPayload(roomHubPanel());
+  const existingId = store.getRoomPanelMessage(guildId);
+  if (existingId) {
+    const message = await channel.messages.fetch(existingId).catch(() => null);
+    if (message) {
+      await message.edit(payload).catch(() => null);
+      return;
+    }
+  }
+  const sent = await channel.send(payload).catch(() => null);
+  if (sent) {
+    store.setRoomPanelMessage(guildId, sent.id);
+    await store.save();
   }
 }
 
@@ -113,6 +140,7 @@ async function main() {
     await loadIcons().catch((error) => console.error('Icon preload error:', error));
     cleanupDeadRooms(readyClient, store);
     await store.save();
+    await syncRoomPanel(readyClient, store, config).catch((error) => console.error('Room panel sync error:', error));
     setInterval(() => {
       let changed = dirty;
       dirty = false;

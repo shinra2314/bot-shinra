@@ -32,5 +32,12 @@ export const api = {
   patchTicket: (gid, id, payload) => request('PATCH', `/guilds/${gid}/tickets/${id}`, payload),
   replyTicket: (gid, id, payload) => request('POST', `/guilds/${gid}/tickets/${id}/reply`, payload),
   reports: (gid) => request('GET', `/guilds/${gid}/reports`),
+  resolveReport: (gid, id, status) => request('PATCH', `/guilds/${gid}/reports/${id}`, { status }),
+  audit: (gid) => request('GET', `/guilds/${gid}/audit`),
+  users: (gid, q) => request('GET', `/guilds/${gid}/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  user: (gid, id) => request('GET', `/guilds/${gid}/users/${id}`),
+  adjustUser: (gid, id, payload) => request('POST', `/guilds/${gid}/users/${id}/adjust`, payload),
+  settings: (gid) => request('GET', `/guilds/${gid}/settings`),
+  patchSettings: (gid, patch) => request('PATCH', `/guilds/${gid}/settings`, patch),
   send: (payload) => request('POST', '/send', payload)
 };

@@ -182,6 +182,26 @@ async function handleComponent(interaction, context) {
   if (!interaction.customId.startsWith('room:')) return false;
 
   const [, action, channelId] = interaction.customId.split(':');
+
+  // Кнопка статичной панели-хаба: открыть личную панель кликнувшего (без channelId).
+  if (action === 'mypanel') {
+    const roomData = findRoom(context, interaction);
+    if (!roomData) {
+      await reply(
+        interaction,
+        errorPanel('У тебя нет личной комнаты. Купи её в магазине: `/shop` → раздел «Системные товары».'),
+        { ephemeral: true }
+      );
+      return true;
+    }
+    if (!roomData.channel) {
+      await reply(interaction, errorPanel('Канал твоей комнаты не найден.'), { ephemeral: true });
+      return true;
+    }
+    await reply(interaction, roomPanel(roomData), { ephemeral: true });
+    return true;
+  }
+
   const result = await requireOwner(interaction, context, channelId);
   if (result.error) {
     await reply(interaction, errorPanel(result.error), { ephemeral: true });

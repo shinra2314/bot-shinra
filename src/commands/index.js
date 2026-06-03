@@ -23,6 +23,7 @@ const moduleByName = { basic, profile, games, tops, economy, cases, roles, clans
 // нужна для читаемости и диагностики — на старте проверяем, что каждый владелец
 // зарегистрирован, чтобы не потерять обработчик при переименовании модуля.
 const COMPONENT_PREFIXES = {
+  'admin:': 'admin',
   'casino:': 'casino',
   'duel:': 'fun',
   'inventory:': 'economy',

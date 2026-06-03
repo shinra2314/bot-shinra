@@ -45,11 +45,13 @@ function requireGuild(interaction) {
   return interaction.guildId ? null : 'Эта команда работает только на сервере.';
 }
 
-function shopItems(config) {
+function shopItems(store, guildId, roomPrice) {
+  const rolePrice = store.economySetting(guildId, 'personalRolePrice');
   return [
     { id: 'common_case', name: 'Обычный кейс', price: 350, type: 'case', caseType: 'common', amount: 1 },
     { id: 'rare_case', name: 'Редкий кейс', price: 900, type: 'case', caseType: 'rare', amount: 1 },
-    { id: 'role_pass', name: 'Купон личной роли', price: Math.max(1000, config.personalRolePrice - 500), type: 'rolePass', amount: 1 }
+    { id: 'role_pass', name: 'Купон личной роли', price: Math.max(1000, rolePrice - 500), type: 'rolePass', amount: 1 },
+    { id: 'personal_room', name: 'Личная комната', price: Number(roomPrice) || 10000, type: 'room', amount: 1 }
   ];
 }
 
@@ -109,7 +111,7 @@ const SHOP_CATEGORIES = {
 // Строки магазина для выбранной категории/сортировки.
 function shopRows(context, interaction, category, sortKey) {
   if (category === 'items') {
-    return shopItems(context.config).map((item) => ({
+    return shopItems(context.store, interaction.guildId, context.config.roomPrice).map((item) => ({
       buyValue: `item:${item.id}`,
       optionLabel: item.name,
       optionDescription: formatCoins(item.price),
@@ -322,7 +324,7 @@ async function purchaseBanner(context, interaction, bannerId) {
 }
 
 async function purchaseItem(context, interaction, itemId) {
-  const item = shopItems(context.config).find((entry) => entry.id === itemId);
+  const item = shopItems(context.store, interaction.guildId, context.config.roomPrice).find((entry) => entry.id === itemId);
   if (!item) {
     return reply(interaction, errorPanel('Такой товар больше не доступен.'), { ephemeral: true });
   }
@@ -330,6 +332,44 @@ async function purchaseItem(context, interaction, itemId) {
   const profile = context.store.ensureUser(interaction.guildId, interaction.user);
   if (profile.balance < item.price) {
     return reply(interaction, errorPanel('Недостаточно монет для покупки.'), { ephemeral: true });
+  }
+
+  // Личная комната — особый товар: создаём голосовой канал через сервис комнат.
+  if (item.type === 'room') {
+    if (context.tempRooms.roomForOwner(interaction.guildId, interaction.user.id)) {
+      return reply(interaction, errorPanel('У тебя уже есть личная комната.'), { ephemeral: true });
+    }
+    const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    if (!member) {
+      return reply(interaction, errorPanel('Не удалось определить участника.'), { ephemeral: true });
+    }
+
+    profile.balance -= item.price;
+    context.store.recordTransaction(interaction.guildId, {
+      type: 'shop',
+      fromId: interaction.user.id,
+      amount: item.price,
+      note: `shop: ${item.name}`
+    });
+    await context.store.save();
+
+    try {
+      const { channel } = await context.tempRooms.createRoom(interaction.guild, member, { persistent: true });
+      return reply(
+        interaction,
+        successPanel(`Личная комната создана: <#${channel.id}>. Новый баланс: **${formatCoins(profile.balance)}**.`, 'Комната куплена'),
+        { ephemeral: true }
+      );
+    } catch (error) {
+      console.error('Room purchase create failed:', error);
+      profile.balance += item.price;
+      await context.store.save();
+      return reply(
+        interaction,
+        errorPanel('Не удалось создать комнату — монеты возвращены. Проверь, что у бота есть право `Manage Channels`.'),
+        { ephemeral: true }
+      );
+    }
   }
 
   profile.balance -= item.price;
@@ -489,7 +529,10 @@ const commands = [
       if (guildError) return reply(interaction, errorPanel(guildError), { ephemeral: true });
 
       const profile = context.store.ensureUser(interaction.guildId, interaction.user);
-      const cooldownMs = context.config.timelyCooldownHours * 60 * 60 * 1000;
+      const timelyReward = context.store.economySetting(interaction.guildId, 'timelyReward');
+      const timelySnowballs = context.store.economySetting(interaction.guildId, 'timelySnowballs');
+      const timelyCooldownHours = context.store.economySetting(interaction.guildId, 'timelyCooldownHours');
+      const cooldownMs = timelyCooldownHours * 60 * 60 * 1000;
       const availableAt = Number(profile.lastTimely || 0) + cooldownMs;
 
       if (Date.now() < availableAt) {
@@ -509,13 +552,13 @@ const commands = [
 
       const prediction = PREDICTIONS[Math.floor(Math.random() * PREDICTIONS.length)];
       profile.lastTimely = Date.now();
-      profile.balance += context.config.timelyReward;
-      profile.snowballs += context.config.timelySnowballs;
+      profile.balance += timelyReward;
+      profile.snowballs += timelySnowballs;
       profile.xp += 35;
       context.store.recordTransaction(interaction.guildId, {
         type: 'timely',
         toId: interaction.user.id,
-        amount: context.config.timelyReward,
+        amount: timelyReward,
         note: 'timely reward'
       });
       await context.store.save();
@@ -523,8 +566,8 @@ const commands = [
       const card = await buildTimelyCard({
         user: interaction.user,
         profile,
-        reward: context.config.timelyReward,
-        snowballs: context.config.timelySnowballs,
+        reward: timelyReward,
+        snowballs: timelySnowballs,
         xp: 35
       });
       if (card) {
@@ -537,8 +580,8 @@ const commands = [
             description: `${mentionUser(interaction.user.id)}, ${prediction}`,
             imageUrl: card.imageUrl,
             color: COLORS.economy,
-            lines: [`${ICONS.gift} Вам выпало **${context.config.timelyReward} монет** и **${context.config.timelySnowballs} снежка**`],
-            footer: `Возвращайтесь через ${context.config.timelyCooldownHours} часов`
+            lines: [`${ICONS.gift} Вам выпало **${timelyReward} монет** и **${timelySnowballs} снежка**`],
+            footer: `Возвращайтесь через ${timelyCooldownHours} часов`
           }),
           { files: card.files, ephemeral: false }
         );
@@ -554,12 +597,12 @@ const commands = [
           color: COLORS.economy,
           thumbnail: compactThumbnail(interaction.user),
           stats: [
-            { icon: ICONS.coins, name: 'Монеты', value: `+${context.config.timelyReward}` },
-            { icon: ICONS.snow, name: 'Снежки', value: `+${context.config.timelySnowballs}` },
+            { icon: ICONS.coins, name: 'Монеты', value: `+${timelyReward}` },
+            { icon: ICONS.snow, name: 'Снежки', value: `+${timelySnowballs}` },
             { icon: ICONS.xp, name: 'Опыт', value: '+35' }
           ],
           statColumns: 2,
-          footer: `Возвращайтесь через ${context.config.timelyCooldownHours} часов`
+          footer: `Возвращайтесь через ${timelyCooldownHours} часов`
         }),
         { ephemeral: false }
       );
