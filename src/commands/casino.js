@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const { COLORS, ICONS, ButtonStyle, button, errorPanel, mediaPanel, panel, reply, update } = require('../ui/components');
 const { displayName, formatCoins, mentionUser, timeAgo } = require('../utils/format');
 const { buildResultCard } = require('../services/profileCard');
+const quests = require('../services/quests');
 
 function formatSigned(value) {
   const n = Number(value || 0);
@@ -71,34 +72,36 @@ function casinoMenuPanel(user, profile, game = 'slots', bet = 100, extra = 'none
   const safeExtra = extra === 'none' ? (safeGame === 'dice' ? 'high' : safeGame === 'roulette' ? 'red' : 'none') : extra;
   const isLots = safeGame === 'lots';
   const currentPrice = isLots ? `${bet} лот. x 150 мон.` : formatCoins(bet);
+  // Хвост-тег роли кнопки (:m/:b/:g) делает customId уникальным между группами —
+  // иначе активная игра-кнопка совпадает с кнопкой ставки/режима (дубль custom_id).
   const modeButtons = safeGame === 'dice'
     ? [
-        button(`casino:menu:${user.id}:dice:${bet}:high`, 'Больше 7', ButtonStyle.Secondary, safeExtra === 'high'),
-        button(`casino:menu:${user.id}:dice:${bet}:low`, 'Меньше 7', ButtonStyle.Secondary, safeExtra === 'low'),
-        button(`casino:menu:${user.id}:dice:${bet}:seven`, 'Ровно 7', ButtonStyle.Secondary, safeExtra === 'seven')
+        button(`casino:menu:${user.id}:dice:${bet}:high:m`, 'Больше 7', ButtonStyle.Secondary, safeExtra === 'high'),
+        button(`casino:menu:${user.id}:dice:${bet}:low:m`, 'Меньше 7', ButtonStyle.Secondary, safeExtra === 'low'),
+        button(`casino:menu:${user.id}:dice:${bet}:seven:m`, 'Ровно 7', ButtonStyle.Secondary, safeExtra === 'seven')
       ]
     : safeGame === 'roulette'
       ? [
-          button(`casino:menu:${user.id}:roulette:${bet}:red`, 'Красное', ButtonStyle.Secondary, safeExtra === 'red'),
-          button(`casino:menu:${user.id}:roulette:${bet}:black`, 'Черное', ButtonStyle.Secondary, safeExtra === 'black'),
-          button(`casino:menu:${user.id}:roulette:${bet}:even`, 'Чет', ButtonStyle.Secondary, safeExtra === 'even'),
-          button(`casino:menu:${user.id}:roulette:${bet}:odd`, 'Нечет', ButtonStyle.Secondary, safeExtra === 'odd'),
-          button(`casino:menu:${user.id}:roulette:${bet}:zero`, 'Зеро', ButtonStyle.Secondary, safeExtra === 'zero')
+          button(`casino:menu:${user.id}:roulette:${bet}:red:m`, 'Красное', ButtonStyle.Secondary, safeExtra === 'red'),
+          button(`casino:menu:${user.id}:roulette:${bet}:black:m`, 'Черное', ButtonStyle.Secondary, safeExtra === 'black'),
+          button(`casino:menu:${user.id}:roulette:${bet}:even:m`, 'Чет', ButtonStyle.Secondary, safeExtra === 'even'),
+          button(`casino:menu:${user.id}:roulette:${bet}:odd:m`, 'Нечет', ButtonStyle.Secondary, safeExtra === 'odd'),
+          button(`casino:menu:${user.id}:roulette:${bet}:zero:m`, 'Зеро', ButtonStyle.Secondary, safeExtra === 'zero')
         ]
       : [];
 
   const betButtons = isLots
     ? [
-        button(`casino:menu:${user.id}:${safeGame}:1:${safeExtra}`, '1 лот', ButtonStyle.Secondary, bet === 1),
-        button(`casino:menu:${user.id}:${safeGame}:3:${safeExtra}`, '3 лота', ButtonStyle.Secondary, bet === 3),
-        button(`casino:menu:${user.id}:${safeGame}:5:${safeExtra}`, '5 лотов', ButtonStyle.Secondary, bet === 5),
-        button(`casino:menu:${user.id}:${safeGame}:10:${safeExtra}`, '10 лотов', ButtonStyle.Secondary, bet === 10)
+        button(`casino:menu:${user.id}:${safeGame}:1:${safeExtra}:b`, '1 лот', ButtonStyle.Secondary, bet === 1),
+        button(`casino:menu:${user.id}:${safeGame}:3:${safeExtra}:b`, '3 лота', ButtonStyle.Secondary, bet === 3),
+        button(`casino:menu:${user.id}:${safeGame}:5:${safeExtra}:b`, '5 лотов', ButtonStyle.Secondary, bet === 5),
+        button(`casino:menu:${user.id}:${safeGame}:10:${safeExtra}:b`, '10 лотов', ButtonStyle.Secondary, bet === 10)
       ]
     : [
-        button(`casino:menu:${user.id}:${safeGame}:100:${safeExtra}`, '100', ButtonStyle.Secondary, bet === 100),
-        button(`casino:menu:${user.id}:${safeGame}:500:${safeExtra}`, '500', ButtonStyle.Secondary, bet === 500),
-        button(`casino:menu:${user.id}:${safeGame}:1000:${safeExtra}`, '1 000', ButtonStyle.Secondary, bet === 1000),
-        button(`casino:menu:${user.id}:${safeGame}:5000:${safeExtra}`, '5 000', ButtonStyle.Secondary, bet === 5000)
+        button(`casino:menu:${user.id}:${safeGame}:100:${safeExtra}:b`, '100', ButtonStyle.Secondary, bet === 100),
+        button(`casino:menu:${user.id}:${safeGame}:500:${safeExtra}:b`, '500', ButtonStyle.Secondary, bet === 500),
+        button(`casino:menu:${user.id}:${safeGame}:1000:${safeExtra}:b`, '1 000', ButtonStyle.Secondary, bet === 1000),
+        button(`casino:menu:${user.id}:${safeGame}:5000:${safeExtra}:b`, '5 000', ButtonStyle.Secondary, bet === 5000)
       ];
 
   return panel({
@@ -116,10 +119,10 @@ function casinoMenuPanel(user, profile, game = 'slots', bet = 100, extra = 'none
     ],
     statColumns: 2,
     actions: [
-      button(`casino:menu:${user.id}:slots:${isLots ? 100 : bet}:none`, 'Слоты', ButtonStyle.Primary, safeGame === 'slots'),
-      button(`casino:menu:${user.id}:dice:${isLots ? 100 : bet}:high`, 'Кости', ButtonStyle.Primary, safeGame === 'dice'),
-      button(`casino:menu:${user.id}:roulette:${isLots ? 100 : bet}:red`, 'Рулетка', ButtonStyle.Primary, safeGame === 'roulette'),
-      button(`casino:menu:${user.id}:lots:3:none`, 'Лоты', ButtonStyle.Primary, safeGame === 'lots'),
+      button(`casino:menu:${user.id}:slots:${isLots ? 100 : bet}:none:g`, 'Слоты', ButtonStyle.Primary, safeGame === 'slots'),
+      button(`casino:menu:${user.id}:dice:${isLots ? 100 : bet}:high:g`, 'Кости', ButtonStyle.Primary, safeGame === 'dice'),
+      button(`casino:menu:${user.id}:roulette:${isLots ? 100 : bet}:red:g`, 'Рулетка', ButtonStyle.Primary, safeGame === 'roulette'),
+      button(`casino:menu:${user.id}:lots:3:none:g`, 'Лоты', ButtonStyle.Primary, safeGame === 'lots'),
       ...betButtons,
       ...modeButtons,
       button(`casino:play:${user.id}:${safeGame}:${bet}:${safeExtra}`, 'Играть', ButtonStyle.Success),
@@ -344,6 +347,9 @@ async function runCasino(interaction, context, payload, respond = reply) {
     updatedProfile.cases.common = Number(updatedProfile.cases.common || 0) + result.commonCases;
   }
 
+  quests.progress(updatedProfile, 'casino');
+  if (result.payout > result.bet) quests.progress(updatedProfile, 'casino_win');
+
   await context.store.save();
 
   // Рендер карты результата (canvas) может занять >3 сек. Для кнопок успеваем
@@ -381,6 +387,23 @@ function statsPanel(user, profile, back = null) {
       ? history.map((item) => `**${item.game}:** ${item.profit >= 0 ? '+' : '-'}${formatCoins(Math.abs(item.profit))} • ${timeAgo(item.createdAt)}`)
       : ['История казино пока пустая.'],
     actions: back ? [button(back, 'Назад', ButtonStyle.Secondary)] : []
+  });
+}
+
+// Статичная панель казино (публикуется /панель). Кнопка открывает личное меню кликнувшего.
+function hubPanel(imageUrl) {
+  return panel({
+    imageUrl,
+    title: 'ONIX CASINO',
+    icon: ICONS.casino,
+    eyebrow: 'Казино Onix',
+    description: 'Слоты, кости, рулетка и лоты. Нажми «Открыть казино» — меню откроется лично для тебя.',
+    color: COLORS.games,
+    footer: 'Игра идёт на твои монеты. Меню и результаты видны только тебе.',
+    actions: [
+      button('casino:hub:open', '🎰 Открыть казино', ButtonStyle.Primary),
+      button('casino:hub:stats', '📊 Статистика', ButtonStyle.Secondary)
+    ]
   });
 }
 
@@ -499,6 +522,19 @@ async function handleComponent(interaction, context) {
   if (!interaction.customId.startsWith('casino:')) return false;
 
   const parts = interaction.customId.split(':');
+
+  // Кнопки статичной панели: открыть личное меню/статистику кликнувшего (эфемерно).
+  if (parts[1] === 'hub') {
+    const profile = context.store.ensureUser(interaction.guildId, interaction.user);
+    await context.store.save();
+    if (parts[2] === 'stats') {
+      await reply(interaction, statsPanel(interaction.user, profile), { ephemeral: true });
+    } else {
+      await reply(interaction, casinoMenuPanel(interaction.user, profile), { ephemeral: true });
+    }
+    return true;
+  }
+
   if (parts[1] === 'menu') {
     const [, , userId, game, valueRaw, extraRaw] = parts;
     if (interaction.user.id !== userId) {
@@ -575,5 +611,6 @@ async function handleComponent(interaction, context) {
 
 module.exports = {
   commands,
-  handleComponent
+  handleComponent,
+  hubPanel
 };

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { ActionRowBuilder, ModalBuilder, SlashCommandBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const {
   COLORS,
   ICONS,
@@ -10,10 +10,35 @@ const {
   reply,
   select,
   successPanel,
-  update
+  update,
+  userSelect
 } = require('../ui/components');
 const { compactThumbnail, displayName, formatCoins, formatDateTime, formatDuration, mentionUser, timeAgo } = require('../utils/format');
 const { PROFILE_CATALOG, buildBalanceCard, buildTimelyCard } = require('../services/profileCard');
+const quests = require('../services/quests');
+
+// Стрик ежедневных наград: +50 монет за каждый день серии (кап 7), сброс при пропуске.
+const STREAK_BONUS_PER_DAY = 50;
+const STREAK_CAP = 7;
+
+function dateKey(ts) {
+  return new Date(ts).toISOString().slice(0, 10);
+}
+
+// Пересчитать серию заходов по дате последнего захода. Мутирует profile, возвращает streak.
+function bumpDailyStreak(profile) {
+  const today = dateKey(Date.now());
+  const yesterday = dateKey(Date.now() - 86400000);
+  if (profile.dailyStreakDate === today) {
+    // уже засчитан сегодня (cooldown < 24ч мог пустить второй раз) — серию не двигаем
+  } else if (profile.dailyStreakDate === yesterday) {
+    profile.dailyStreak = Number(profile.dailyStreak || 0) + 1;
+  } else {
+    profile.dailyStreak = 1;
+  }
+  profile.dailyStreakDate = today;
+  return profile.dailyStreak;
+}
 
 const PREDICTIONS = [
   'Сегодня лучше не спорить с модерацией и забрать свою награду спокойно.',
@@ -50,6 +75,7 @@ function shopItems(store, guildId, roomPrice) {
   return [
     { id: 'common_case', name: 'Обычный кейс', price: 350, type: 'case', caseType: 'common', amount: 1 },
     { id: 'rare_case', name: 'Редкий кейс', price: 900, type: 'case', caseType: 'rare', amount: 1 },
+    { id: 'epic_case', name: 'Эпический кейс', price: 2000, type: 'case', caseType: 'epic', amount: 1 },
     { id: 'role_pass', name: 'Купон личной роли', price: Math.max(1000, rolePrice - 500), type: 'rolePass', amount: 1 },
     { id: 'personal_room', name: 'Личная комната', price: Number(roomPrice) || 10000, type: 'room', amount: 1 }
   ];
@@ -169,17 +195,6 @@ function shopPanel(context, interaction, { page = 0, sort = 'old', category = 'r
     ? visible.map((row, index) => `**${safePage * SHOP_PER_PAGE + index + 1})** ${row.body.join('\n')}`)
     : ['В этой категории пока пусто.'];
 
-  // Окно из максимум 5 кнопок-страниц вокруг текущей.
-  const windowSize = Math.min(5, totalPages);
-  const windowStart = Math.max(0, Math.min(safePage - 2, totalPages - windowSize));
-  const pageButtons = [];
-  for (let i = 0; i < windowSize; i += 1) {
-    const p = windowStart + i;
-    pageButtons.push(
-      button(`shop:goto:${userId}:${p}:${sort}:${cat}`, String(p + 1), p === safePage ? ButtonStyle.Primary : ButtonStyle.Secondary, p === safePage)
-    );
-  }
-
   const sortSelect = select(
     `shop:sort:${userId}:${cat}`,
     sortDef.label,
@@ -191,33 +206,31 @@ function shopPanel(context, interaction, { page = 0, sort = 'old', category = 'r
     Object.entries(SHOP_CATEGORIES).map(([value, label]) => ({ label, value, default: value === cat }))
   );
 
-  const actions = [...pageButtons, sortSelect, catSelect];
+  // Отдельная кнопка «Купить N» на каждый видимый товар — покупка очевидна и в один клик.
+  const actions = [];
+  visible.forEach((row, index) => {
+    const num = safePage * SHOP_PER_PAGE + index + 1;
+    const [kind, id] = row.buyValue.split(':');
+    actions.push(button(`shop:get:${userId}:${kind}:${id}`, `Купить ${num}`, ButtonStyle.Success));
+  });
 
-  if (visible.length > 0) {
-    actions.push(
-      select(
-        `shop:obtain:${userId}:${safePage}:${sort}:${cat}`,
-        'Купить товар',
-        visible.map((row, index) => ({
-          label: `${safePage * SHOP_PER_PAGE + index + 1}. ${row.optionLabel}`.slice(0, 100),
-          value: row.buyValue,
-          description: row.optionDescription.slice(0, 100)
-        }))
-      )
-    );
+  // Селект категории всегда, сортировка — только для ролей (для товаров/баннеров она бессмысленна).
+  actions.push(catSelect);
+  if (cat === 'roles') actions.push(sortSelect);
+
+  // Навигация по страницам — только когда страниц больше одной. Закрыть — всегда.
+  const nav = [];
+  if (totalPages > 1) {
+    nav.push(button(`shop:prev:${userId}:${safePage}:${sort}:${cat}`, '◀', ButtonStyle.Secondary, safePage <= 0));
   }
-
-  // Отдельные verbs для навигации, чтобы custom_id не дублировали кнопки-страницы.
-  actions.push(
-    button(`shop:first:${userId}:${sort}:${cat}`, '⏪', ButtonStyle.Secondary, safePage <= 0),
-    button(`shop:prev:${userId}:${safePage}:${sort}:${cat}`, '◀', ButtonStyle.Secondary, safePage <= 0),
-    button(`shop:close:${userId}`, '🗑', ButtonStyle.Danger),
-    button(`shop:next:${userId}:${safePage}:${sort}:${cat}`, '▶', ButtonStyle.Secondary, safePage >= totalPages - 1),
-    button(`shop:last:${userId}:${sort}:${cat}`, '⏩', ButtonStyle.Secondary, safePage >= totalPages - 1)
-  );
+  nav.push(button(`shop:close:${userId}`, '✖ Закрыть', ButtonStyle.Danger));
+  if (totalPages > 1) {
+    nav.push(button(`shop:next:${userId}:${safePage}:${sort}:${cat}`, '▶', ButtonStyle.Secondary, safePage >= totalPages - 1));
+  }
+  actions.push(...nav);
 
   return panel({
-    title: 'Магазин личных ролей',
+    title: SHOP_CATEGORIES[cat],
     icon: ICONS.shop,
     eyebrow: 'Магазин Onix',
     description: `${ICONS.coins} Ваш баланс: **${formatCoins(balance)}**`,
@@ -444,6 +457,7 @@ function inventoryView(context, guildId, user, profile, view) {
       `**Обычные кейсы:** ${profile.cases.common || 0}`,
       `**Редкие кейсы:** ${profile.cases.rare || 0}`,
       `**Эпические кейсы:** ${profile.cases.epic || 0}`,
+      `**Легендарные кейсы:** ${profile.cases.legendary || 0}`,
       `**Прочее:** ${formatInventory(profile.inventory)}`
     ]
   };
@@ -467,6 +481,173 @@ function inventoryView(context, guildId, user, profile, view) {
   });
 }
 
+// Баланс (карточка или текст) — общая логика для slash `/balance` и кнопки панели.
+async function balanceResponse(context, interaction, target) {
+  const profile = context.store.ensureUser(interaction.guildId, target);
+  await context.store.save();
+  const stats = [
+    { icon: ICONS.coins, name: 'Монеты', value: Number(profile.balance || 0).toLocaleString('ru-RU') },
+    { icon: ICONS.lotus, name: 'Лотусы', value: Number(profile.lotuses || 0).toLocaleString('ru-RU') },
+    { icon: ICONS.snow, name: 'Снежки', value: Number(profile.snowballs || 0).toLocaleString('ru-RU') }
+  ];
+  const card = await buildBalanceCard({ user: target, profile });
+  if (card) {
+    return {
+      components: mediaPanel({
+        title: `Баланс — ${displayName(target)}`,
+        icon: ICONS.economy,
+        eyebrow: 'Экономика Onix',
+        description: mentionUser(target.id),
+        imageUrl: card.imageUrl,
+        color: COLORS.economy,
+        stats,
+        statColumns: 2
+      }),
+      files: card.files
+    };
+  }
+  return {
+    components: panel({
+      title: `Баланс — ${displayName(target)}`,
+      icon: ICONS.economy,
+      eyebrow: 'Экономика Onix',
+      description: mentionUser(target.id),
+      thumbnail: compactThumbnail(target),
+      color: COLORS.economy,
+      stats,
+      statColumns: 2
+    })
+  };
+}
+
+// Печенье с предсказанием — общая логика для slash `/timely` и кнопки панели.
+async function claimTimely(interaction, context) {
+  const profile = context.store.ensureUser(interaction.guildId, interaction.user);
+  const timelyReward = context.store.economySetting(interaction.guildId, 'timelyReward');
+  const timelySnowballs = context.store.economySetting(interaction.guildId, 'timelySnowballs');
+  const timelyCooldownHours = context.store.economySetting(interaction.guildId, 'timelyCooldownHours');
+  const cooldownMs = timelyCooldownHours * 60 * 60 * 1000;
+  const availableAt = Number(profile.lastTimely || 0) + cooldownMs;
+
+  if (Date.now() < availableAt) {
+    return reply(
+      interaction,
+      panel({
+        title: 'Предсказание дня',
+        icon: ICONS.time,
+        eyebrow: 'Печенье с предсказанием',
+        description: `${mentionUser(interaction.user.id)}, Вы недавно уже открывали печенье!\nСледующее можно открыть через **${remainingText(availableAt - Date.now())}**.`,
+        color: COLORS.warning,
+        thumbnail: compactThumbnail(interaction.user)
+      }),
+      { ephemeral: false }
+    );
+  }
+
+  const prediction = PREDICTIONS[Math.floor(Math.random() * PREDICTIONS.length)];
+  profile.lastTimely = Date.now();
+  const streak = bumpDailyStreak(profile);
+  const streakBonus = Math.min(streak, STREAK_CAP) * STREAK_BONUS_PER_DAY;
+  const totalReward = timelyReward + streakBonus;
+  profile.balance += totalReward;
+  profile.snowballs += timelySnowballs;
+  profile.xp += 35;
+  quests.progress(profile, 'timely');
+  context.store.recordTransaction(interaction.guildId, {
+    type: 'timely',
+    toId: interaction.user.id,
+    amount: totalReward,
+    note: 'timely reward'
+  });
+  await context.store.save();
+
+  const streakLine = `${ICONS.fire} Серия заходов: **${streak} дн.**${streakBonus > 0 ? ` (+${streakBonus} монет за стрик)` : ''}`;
+  const card = await buildTimelyCard({
+    user: interaction.user,
+    profile,
+    reward: totalReward,
+    snowballs: timelySnowballs,
+    xp: 35
+  });
+  if (card) {
+    return reply(
+      interaction,
+      mediaPanel({
+        title: 'Предсказание дня',
+        icon: ICONS.gift,
+        eyebrow: 'Печенье с предсказанием',
+        description: `${mentionUser(interaction.user.id)}, ${prediction}`,
+        imageUrl: card.imageUrl,
+        color: COLORS.economy,
+        lines: [
+          `${ICONS.gift} Вам выпало **${totalReward} монет** и **${timelySnowballs} снежка**`,
+          streakLine
+        ],
+        footer: `Возвращайтесь через ${timelyCooldownHours} часов`
+      }),
+      { files: card.files, ephemeral: false }
+    );
+  }
+
+  return reply(
+    interaction,
+    panel({
+      title: 'Предсказание дня',
+      icon: ICONS.gift,
+      eyebrow: 'Печенье с предсказанием',
+      description: `${mentionUser(interaction.user.id)}, ${prediction}`,
+      color: COLORS.economy,
+      thumbnail: compactThumbnail(interaction.user),
+      stats: [
+        { icon: ICONS.coins, name: 'Монеты', value: `+${totalReward}` },
+        { icon: ICONS.snow, name: 'Снежки', value: `+${timelySnowballs}` },
+        { icon: ICONS.xp, name: 'Опыт', value: '+35' },
+        { icon: ICONS.fire, name: 'Серия', value: `${streak} дн.` }
+      ],
+      statColumns: 2,
+      footer: `Возвращайтесь через ${timelyCooldownHours} часов`
+    }),
+    { ephemeral: false }
+  );
+}
+
+// Статичная панель экономики (публикуется /панель).
+function hubPanel(imageUrl) {
+  return panel({
+    imageUrl,
+    title: 'Экономика',
+    icon: ICONS.economy,
+    eyebrow: 'Экономика Onix',
+    description: 'Баланс, ежедневная награда, переводы, магазин, инвентарь и история операций.',
+    color: COLORS.economy,
+    actions: [
+      button('economy:hub:balance', '💰 Баланс', ButtonStyle.Primary),
+      button('economy:hub:timely', '🎁 Награда', ButtonStyle.Success),
+      button('economy:hub:give', '🪙 Передать', ButtonStyle.Secondary),
+      button('economy:hub:shop', '🛒 Магазин', ButtonStyle.Secondary),
+      button('economy:hub:inventory', '🎒 Инвентарь', ButtonStyle.Secondary),
+      button('economy:hub:transactions', '📜 Транзакции', ButtonStyle.Secondary)
+    ]
+  });
+}
+
+function giveModal(targetId) {
+  return new ModalBuilder()
+    .setCustomId(`economy:hub:give-amount:${targetId}`)
+    .setTitle('Передать монеты')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('amount')
+          .setLabel('Сколько монет передать')
+          .setStyle(TextInputStyle.Short)
+          .setMinLength(1)
+          .setMaxLength(7)
+          .setRequired(true)
+      )
+    );
+}
+
 const commands = [
   {
     data: new SlashCommandBuilder()
@@ -478,48 +659,8 @@ const commands = [
       if (guildError) return reply(interaction, errorPanel(guildError), { ephemeral: true });
 
       const target = interaction.options.getUser('user') || interaction.user;
-      const profile = context.store.ensureUser(interaction.guildId, target);
-      await context.store.save();
-
-      const card = await buildBalanceCard({ user: target, profile });
-      if (card) {
-        return reply(
-          interaction,
-          mediaPanel({
-            title: `Баланс — ${displayName(target)}`,
-            icon: ICONS.economy,
-            eyebrow: 'Экономика Onix',
-            description: mentionUser(target.id),
-            imageUrl: card.imageUrl,
-            color: COLORS.economy,
-            stats: [
-              { icon: ICONS.coins, name: 'Монеты', value: Number(profile.balance || 0).toLocaleString('ru-RU') },
-              { icon: ICONS.lotus, name: 'Лотусы', value: Number(profile.lotuses || 0).toLocaleString('ru-RU') },
-              { icon: ICONS.snow, name: 'Снежки', value: Number(profile.snowballs || 0).toLocaleString('ru-RU') }
-            ],
-            statColumns: 2
-          }),
-          { files: card.files }
-        );
-      }
-
-      return reply(
-        interaction,
-        panel({
-          title: `Баланс — ${displayName(target)}`,
-          icon: ICONS.economy,
-          eyebrow: 'Экономика Onix',
-          description: mentionUser(target.id),
-          thumbnail: compactThumbnail(target),
-          color: COLORS.economy,
-          stats: [
-            { icon: ICONS.coins, name: 'Монеты', value: Number(profile.balance || 0).toLocaleString('ru-RU') },
-            { icon: ICONS.lotus, name: 'Лотусы', value: Number(profile.lotuses || 0).toLocaleString('ru-RU') },
-            { icon: ICONS.snow, name: 'Снежки', value: Number(profile.snowballs || 0).toLocaleString('ru-RU') }
-          ],
-          statColumns: 2
-        })
-      );
+      const { components, files } = await balanceResponse(context, interaction, target);
+      return reply(interaction, components, { files });
     }
   },
   {
@@ -527,85 +668,7 @@ const commands = [
     async execute(interaction, context) {
       const guildError = requireGuild(interaction);
       if (guildError) return reply(interaction, errorPanel(guildError), { ephemeral: true });
-
-      const profile = context.store.ensureUser(interaction.guildId, interaction.user);
-      const timelyReward = context.store.economySetting(interaction.guildId, 'timelyReward');
-      const timelySnowballs = context.store.economySetting(interaction.guildId, 'timelySnowballs');
-      const timelyCooldownHours = context.store.economySetting(interaction.guildId, 'timelyCooldownHours');
-      const cooldownMs = timelyCooldownHours * 60 * 60 * 1000;
-      const availableAt = Number(profile.lastTimely || 0) + cooldownMs;
-
-      if (Date.now() < availableAt) {
-        return reply(
-          interaction,
-          panel({
-            title: 'Предсказание дня',
-            icon: ICONS.time,
-            eyebrow: 'Печенье с предсказанием',
-            description: `${mentionUser(interaction.user.id)}, Вы недавно уже открывали печенье!\nСледующее можно открыть через **${remainingText(availableAt - Date.now())}**.`,
-            color: COLORS.warning,
-            thumbnail: compactThumbnail(interaction.user)
-          }),
-          { ephemeral: false }
-        );
-      }
-
-      const prediction = PREDICTIONS[Math.floor(Math.random() * PREDICTIONS.length)];
-      profile.lastTimely = Date.now();
-      profile.balance += timelyReward;
-      profile.snowballs += timelySnowballs;
-      profile.xp += 35;
-      context.store.recordTransaction(interaction.guildId, {
-        type: 'timely',
-        toId: interaction.user.id,
-        amount: timelyReward,
-        note: 'timely reward'
-      });
-      await context.store.save();
-
-      const card = await buildTimelyCard({
-        user: interaction.user,
-        profile,
-        reward: timelyReward,
-        snowballs: timelySnowballs,
-        xp: 35
-      });
-      if (card) {
-        return reply(
-          interaction,
-          mediaPanel({
-            title: 'Предсказание дня',
-            icon: ICONS.gift,
-            eyebrow: 'Печенье с предсказанием',
-            description: `${mentionUser(interaction.user.id)}, ${prediction}`,
-            imageUrl: card.imageUrl,
-            color: COLORS.economy,
-            lines: [`${ICONS.gift} Вам выпало **${timelyReward} монет** и **${timelySnowballs} снежка**`],
-            footer: `Возвращайтесь через ${timelyCooldownHours} часов`
-          }),
-          { files: card.files, ephemeral: false }
-        );
-      }
-
-      return reply(
-        interaction,
-        panel({
-          title: 'Предсказание дня',
-          icon: ICONS.gift,
-          eyebrow: 'Печенье с предсказанием',
-          description: `${mentionUser(interaction.user.id)}, ${prediction}`,
-          color: COLORS.economy,
-          thumbnail: compactThumbnail(interaction.user),
-          stats: [
-            { icon: ICONS.coins, name: 'Монеты', value: `+${timelyReward}` },
-            { icon: ICONS.snow, name: 'Снежки', value: `+${timelySnowballs}` },
-            { icon: ICONS.xp, name: 'Опыт', value: '+35' }
-          ],
-          statColumns: 2,
-          footer: `Возвращайтесь через ${timelyCooldownHours} часов`
-        }),
-        { ephemeral: false }
-      );
+      return claimTimely(interaction, context);
     }
   },
   {
@@ -690,7 +753,93 @@ const commands = [
   }
 ];
 
+// Кнопки статичной панели экономики (customId `economy:hub:<fn>`).
+async function handleEconomyHub(interaction, context) {
+  const guildError = requireGuild(interaction);
+  if (guildError) {
+    await reply(interaction, errorPanel(guildError), { ephemeral: true });
+    return true;
+  }
+  const parts = interaction.customId.split(':');
+  const fn = parts[2];
+
+  if (fn === 'balance') {
+    const { components, files } = await balanceResponse(context, interaction, interaction.user);
+    await reply(interaction, components, { files, ephemeral: true });
+    return true;
+  }
+  if (fn === 'timely') {
+    await claimTimely(interaction, context);
+    return true;
+  }
+  if (fn === 'shop') {
+    context.store.ensureUser(interaction.guildId, interaction.user);
+    await reply(interaction, shopPanel(context, interaction, {}), { ephemeral: true });
+    return true;
+  }
+  if (fn === 'inventory') {
+    context.store.ensureUser(interaction.guildId, interaction.user);
+    await reply(interaction, inventoryPrompt(interaction.user), { ephemeral: true });
+    return true;
+  }
+  if (fn === 'transactions') {
+    context.store.ensureUser(interaction.guildId, interaction.user);
+    await reply(interaction, transactionsPanel(context, interaction.guildId, interaction.user, 0), { ephemeral: true });
+    return true;
+  }
+  if (fn === 'give') {
+    await reply(interaction, panel({
+      title: 'Передать монеты',
+      icon: ICONS.coins,
+      eyebrow: 'Экономика Onix',
+      description: 'Выбери получателя — затем введи сумму.',
+      color: COLORS.economy,
+      actions: [userSelect('economy:hub:give-pick', 'Получатель', 1, 1)]
+    }), { ephemeral: true });
+    return true;
+  }
+  if (fn === 'give-pick') {
+    const targetId = interaction.values[0];
+    if (targetId === interaction.user.id) {
+      await reply(interaction, errorPanel('Передавать монеты самому себе нельзя.'), { ephemeral: true });
+      return true;
+    }
+    await interaction.showModal(giveModal(targetId));
+    return true;
+  }
+  if (fn === 'give-amount') {
+    const targetId = parts[3];
+    const amount = Number.parseInt(interaction.fields.getTextInputValue('amount').trim(), 10);
+    if (!Number.isInteger(amount) || amount < 1) {
+      await reply(interaction, errorPanel('Введите целое число монет (≥ 1).'), { ephemeral: true });
+      return true;
+    }
+    const target = await interaction.client.users.fetch(targetId).catch(() => null);
+    if (!target || target.bot) {
+      await reply(interaction, errorPanel('Получатель не найден.'), { ephemeral: true });
+      return true;
+    }
+    try {
+      context.store.transfer(interaction.guildId, interaction.user, target, amount, 'user transfer');
+    } catch (error) {
+      if (error.message === 'INSUFFICIENT_FUNDS') {
+        await reply(interaction, errorPanel('Недостаточно монет для перевода.'), { ephemeral: true });
+        return true;
+      }
+      throw error;
+    }
+    await context.store.save();
+    await reply(interaction, successPanel(`Переведено **${amount.toLocaleString('ru-RU')}** монет → ${mentionUser(target.id)}.`, 'Перевод'), { ephemeral: true });
+    return true;
+  }
+  return false;
+}
+
 async function handleComponent(interaction, context) {
+  if ((interaction.customId || '').startsWith('economy:')) {
+    return handleEconomyHub(interaction, context);
+  }
+
   const isShopSelect = interaction.isStringSelectMenu() && interaction.customId.startsWith('shop:');
   if (!interaction.isButton() && !isShopSelect) return false;
 
@@ -808,6 +957,26 @@ async function handleComponent(interaction, context) {
       return true;
     }
 
+    // Кнопка «Купить N»: shop:get:userId:kind:id (id берём как остаток, на случай ':').
+    if (action === 'get') {
+      const kind = parts[3];
+      const id = parts.slice(4).join(':');
+      if (kind === 'role') {
+        await purchaseRole(context, interaction, id);
+        return true;
+      }
+      if (kind === 'item') {
+        await purchaseItem(context, interaction, id);
+        return true;
+      }
+      if (kind === 'banner') {
+        await purchaseBanner(context, interaction, id);
+        return true;
+      }
+      await reply(interaction, errorPanel('Такой товар не найден.'), { ephemeral: true });
+      return true;
+    }
+
     if (action === 'obtain') {
       const [kind, id] = String(interaction.values?.[0] || '').split(':');
       if (kind === 'role') {
@@ -848,5 +1017,6 @@ async function handleComponent(interaction, context) {
 
 module.exports = {
   commands,
-  handleComponent
+  handleComponent,
+  hubPanel
 };

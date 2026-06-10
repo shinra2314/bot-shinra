@@ -271,6 +271,50 @@ async function buildTimelyCard({ user, profile, reward, snowballs, xp }) {
   return attachment(buffer);
 }
 
+// Карта level-up (на базе hero-лейаута). Показывает скачок уровня и опыт.
+async function buildLevelUpCard({ user, profile, oldLevel, newLevel }) {
+  if (!CARD_AVAILABLE) return null;
+  await loadIcons();
+  const level = levelFromXp(profile.xp);
+  const buffer = paintHeroCard({
+    accent: accentFor(profile),
+    avatar: await loadAvatar(user),
+    name: shortText(user.globalName || user.username, 16),
+    subtitle: 'Прогресс Onix',
+    ring: { value: level.progress, max: level.needed },
+    level: newLevel,
+    title: 'Новый уровень!',
+    tiles: [
+      { icon: 'level', label: 'Уровень', value: `${oldLevel} → ${newLevel}`, accent: '#7CFFB2' },
+      { icon: 'trophy', label: 'Опыт', value: formatNumber(level.xp) },
+      { icon: 'messages', label: 'Достижений', value: formatNumber(profile.achievements?.length || 0) }
+    ]
+  });
+  return attachment(buffer);
+}
+
+// Карта репутации (на базе hero-лейаута).
+async function buildRepCard({ user, profile }) {
+  if (!CARD_AVAILABLE) return null;
+  await loadIcons();
+  const level = levelFromXp(profile.xp);
+  const buffer = paintHeroCard({
+    accent: accentFor(profile),
+    avatar: await loadAvatar(user),
+    name: shortText(user.globalName || user.username, 16),
+    subtitle: 'Социальный рейтинг Onix',
+    ring: { value: level.progress, max: level.needed },
+    level: level.level,
+    title: 'Репутация повышена',
+    tiles: [
+      { icon: 'trophy', label: 'Репутация', value: formatNumber(profile.reputation), accent: '#7CFFB2' },
+      { icon: 'level', label: 'Уровень', value: String(level.level) },
+      { icon: 'messages', label: 'Сообщений', value: formatNumber(profile.messages) }
+    ]
+  });
+  return attachment(buffer);
+}
+
 // Грузит аватары для набора строк/участников параллельно (с таймаутом).
 // entries: [{ avatarUrl, ... }] → возвращает Map(avatarUrl → Image|null).
 async function loadAvatarMap(entries) {
@@ -384,6 +428,35 @@ async function buildAchievementCard({ name }) {
   return attachment(buffer);
 }
 
+// Карта-баннер для статичной панели управления комнатами (сетка фич).
+async function buildRoomHubCard() {
+  if (!CARD_AVAILABLE) return null;
+  await loadIcons();
+  const buffer = paintGridCard({
+    accent: '#38bdf8',
+    title: 'Личные голосовые комнаты',
+    subtitle: 'Своя комната — свои правила',
+    items: [
+      { icon: 'voice', name: 'Лимит мест', price: 'до 99' },
+      { icon: 'messages', name: 'Название', price: 'своё' },
+      { icon: 'level', name: 'Битрейт', price: 'выше' },
+      { icon: 'clan', name: 'Вайтлист', price: 'доступ' },
+      { icon: 'trophy', name: 'Приватность', price: 'замок' },
+      { icon: 'snow', name: 'Регион', price: 'выбор' }
+    ]
+  });
+  return attachment(buffer);
+}
+
+// Универсальный баннер для статичной hub-панели семейства (сетка фич 3x2).
+// spec: { title, subtitle, accent, items:[{ icon, name, price }] }.
+async function buildHubBanner({ title, subtitle, accent, items = [] }) {
+  if (!CARD_AVAILABLE) return null;
+  await loadIcons();
+  const buffer = paintGridCard({ accent, title, subtitle, items });
+  return attachment(buffer);
+}
+
 // Versus-карта клановой войны. a/b: { name, score }.
 async function buildWarCard({ title, subtitle, a, b, accent }) {
   if (!CARD_AVAILABLE) return null;
@@ -399,6 +472,8 @@ module.exports = {
   buildProfileCard,
   buildBalanceCard,
   buildTimelyCard,
+  buildLevelUpCard,
+  buildRepCard,
   buildLeaderboardCard,
   buildResultCard,
   buildClanCard,
@@ -406,5 +481,7 @@ module.exports = {
   buildDropCard,
   buildGridCard,
   buildAchievementCard,
+  buildRoomHubCard,
+  buildHubBanner,
   buildWarCard
 };

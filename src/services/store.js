@@ -1,6 +1,7 @@
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { openDb } = require('./db');
+const quests = require('./quests');
 
 function createDefaultData() {
   return {
@@ -26,9 +27,12 @@ function createGuildData() {
     moderationHistory: [],
     tickets: [],
     auditLog: [],
+    automodLog: [],
+    automodStrikes: {},
     settings: {},
     tempRooms: {},
-    roomPanelMessageId: null
+    roomPanelMessageId: null,
+    giveaways: []
   };
 }
 
@@ -62,8 +66,14 @@ function createUserData(user, startBalance) {
     lotuses: 0,
     snowballs: 0,
     reputation: 0,
+    lastRepAt: 0,
     seasonRank: 'Новичок сезона',
     xp: 0,
+    lastXpAt: 0,
+    seasonXp: 0,
+    prestige: 0,
+    passSeason: 0,
+    passClaimedTier: 0,
     messages: 0,
     activity: { recent: [] },
     voiceMinutes: 0,
@@ -88,7 +98,8 @@ function createUserData(user, startBalance) {
     cases: {
       common: 1,
       rare: 0,
-      epic: 0
+      epic: 0,
+      legendary: 0
     },
     rolePasses: 0,
     personalRoleId: null,
@@ -116,6 +127,9 @@ function createUserData(user, startBalance) {
       history: []
     },
     lastTimely: 0,
+    dailyStreak: 0,
+    dailyStreakDate: null,
+    quests: { date: null, daily: [] },
     inventory: [],
     cosmetics: {
       frames: ['default'],
@@ -226,7 +240,10 @@ class Store {
     this.data.guilds[id].moderationHistory ||= [];
     this.data.guilds[id].tickets ||= [];
     this.data.guilds[id].auditLog ||= [];
+    this.data.guilds[id].automodLog ||= [];
+    this.data.guilds[id].automodStrikes ||= {};
     this.data.guilds[id].settings ||= {};
+    this.data.guilds[id].giveaways ||= [];
     this.data.guilds[id].tempRooms ||= {};
     if (this.data.guilds[id].roomPanelMessageId === undefined) this.data.guilds[id].roomPanelMessageId = null;
     return this.data.guilds[id];
@@ -245,8 +262,14 @@ class Store {
     guild.users[user.id].lotuses ??= 0;
     guild.users[user.id].snowballs ??= 0;
     guild.users[user.id].reputation ??= 0;
+    guild.users[user.id].lastRepAt ??= 0;
     guild.users[user.id].seasonRank ??= 'Новичок сезона';
     guild.users[user.id].xp ??= 0;
+    guild.users[user.id].lastXpAt ??= 0;
+    guild.users[user.id].seasonXp ??= 0;
+    guild.users[user.id].prestige ??= 0;
+    guild.users[user.id].passSeason ??= 0;
+    guild.users[user.id].passClaimedTier ??= 0;
     guild.users[user.id].messages ??= 0;
     guild.users[user.id].activity ||= { recent: [] };
     guild.users[user.id].activity.recent ||= [];
@@ -259,10 +282,11 @@ class Store {
     guild.users[user.id].eventWins ??= 0;
     guild.users[user.id].mafia ||= { games: 0, wins: 0, rating: 1000, mvp: 0, history: [] };
     guild.users[user.id].closes ||= { games: 0, wins: 0, rating: 0 };
-    guild.users[user.id].cases ||= { common: 0, rare: 0, epic: 0 };
+    guild.users[user.id].cases ||= { common: 0, rare: 0, epic: 0, legendary: 0 };
     guild.users[user.id].cases.common ??= 0;
     guild.users[user.id].cases.rare ??= 0;
     guild.users[user.id].cases.epic ??= 0;
+    guild.users[user.id].cases.legendary ??= 0;
     guild.users[user.id].rolePasses ??= 0;
     guild.users[user.id].personalRoleId ??= null;
     guild.users[user.id].roleCreatedAt ??= null;
@@ -288,6 +312,9 @@ class Store {
     guild.users[user.id].casinoStats.biggestWin ??= 0;
     guild.users[user.id].casinoStats.history ||= [];
     guild.users[user.id].lastTimely ??= 0;
+    guild.users[user.id].dailyStreak ??= 0;
+    guild.users[user.id].dailyStreakDate ??= null;
+    guild.users[user.id].quests ||= { date: null, daily: [] };
     guild.users[user.id].inventory ||= [];
     guild.users[user.id].cosmetics ||= {};
     guild.users[user.id].cosmetics.frames ||= ['default'];
@@ -552,6 +579,18 @@ class Store {
     }
     profile.voiceMinutes = Number(profile.voiceMinutes || 0) + minutes;
     profile.voiceDailyMinutes = Number(profile.voiceDailyMinutes || 0) + minutes;
+    // XP за активный войс. Уровень растёт молча (выдача роли / уведомление о
+    // level-up живут в текстовом пути index.js, где есть member и канал);
+    // достижения за уровень подхватятся при следующем сообщении.
+    const voiceXpRate = this.config?.levelXp?.voicePerMinute || 0;
+    if (voiceXpRate > 0) {
+      // Тот же множитель престижа, что и в progression.awardXp (+5%/престиж, кап +50%).
+      const mult = 1 + 0.05 * Math.min(Number(profile.prestige || 0), 10);
+      const gained = Math.floor(minutes * voiceXpRate * mult);
+      profile.xp = Math.max(0, Number(profile.xp || 0)) + gained;
+      this.addSeasonXp(guildId, userId, gained);
+    }
+    quests.progress(profile, 'voice', minutes);
     this.addActivity(guildId, userId, minutes);
     this.addClanWarScore(guildId, userId, Math.floor(minutes / 10) * 5, 'voice');
     this.progressClanQuest(guildId, userId, 'voice_120', minutes);
@@ -672,6 +711,121 @@ class Store {
     return result;
   }
 
+  // ---- Автомодерация (per-guild конфиг поверх config.automod) ----
+  // Возвращает эффективный конфиг: дефолты из config.automod ∪ override из settings.automod.
+  getAutomodConfig(guildId) {
+    const defaults = this.config.automod || {};
+    const override = this.guild(guildId).settings?.automod || {};
+    return {
+      ...defaults,
+      ...override,
+      // Массивы и timeoutSteps не сливаем поэлементно — берём override целиком, если задан.
+      linkWhitelist: override.linkWhitelist || defaults.linkWhitelist || [],
+      badwords: override.badwords || defaults.badwords || [],
+      bypassRoleIds: override.bypassRoleIds || defaults.bypassRoleIds || [],
+      timeoutSteps: override.timeoutSteps || defaults.timeoutSteps || []
+    };
+  }
+
+  // Запись/обновление override автомода. Валидирует типы; неизвестные ключи игнорит.
+  setAutomodConfig(guildId, patch) {
+    const settings = this.guild(guildId).settings ||= {};
+    const current = settings.automod ||= {};
+    if (!patch || typeof patch !== 'object') return this.getAutomodConfig(guildId);
+
+    const numKeys = ['spamCount', 'spamWindowMs', 'mentionLimit', 'mentionRate', 'mentionRateMs', 'emojiLimit', 'newlineLimit', 'strikeWindowMs'];
+    const boolKeys = ['enabled', 'blockInvites', 'blockLinks', 'capsEnabled'];
+    const listKeys = ['linkWhitelist', 'badwords', 'bypassRoleIds'];
+
+    for (const key of numKeys) {
+      if (key in patch) {
+        const num = Number(patch[key]);
+        if (Number.isFinite(num) && num >= 0) current[key] = num;
+      }
+    }
+    for (const key of boolKeys) {
+      if (key in patch) current[key] = Boolean(patch[key]);
+    }
+    for (const key of listKeys) {
+      if (key in patch && Array.isArray(patch[key])) {
+        current[key] = patch[key].map((item) => String(item).trim()).filter(Boolean);
+      }
+    }
+    if (Array.isArray(patch.timeoutSteps)) {
+      current.timeoutSteps = patch.timeoutSteps
+        .map((step) => ({ strikes: Number(step.strikes), ms: Number(step.ms) }))
+        .filter((step) => Number.isFinite(step.strikes) && Number.isFinite(step.ms) && step.strikes > 0 && step.ms > 0)
+        .sort((a, b) => a.strikes - b.strikes);
+    }
+    return this.getAutomodConfig(guildId);
+  }
+
+  // Счётчик страйков автомода со скользящим окном сброса. Возвращает текущее число.
+  addAutomodStrike(guildId, userId) {
+    const guild = this.guild(guildId);
+    const windowMs = Number(this.getAutomodConfig(guildId).strikeWindowMs) || 600000;
+    const now = Date.now();
+    const record = guild.automodStrikes[userId];
+    if (record && now - record.first <= windowMs) {
+      record.count += 1;
+      record.last = now;
+    } else {
+      guild.automodStrikes[userId] = { count: 1, first: now, last: now };
+    }
+    return guild.automodStrikes[userId].count;
+  }
+
+  addAutomodViolation(guildId, entry) {
+    const guild = this.guild(guildId);
+    guild.automodLog.unshift({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      createdAt: Date.now(),
+      ...entry
+    });
+    guild.automodLog = guild.automodLog.slice(0, 200);
+  }
+
+  automodLog(guildId, limit = 100) {
+    return this.guild(guildId).automodLog.slice(0, limit);
+  }
+
+  // ---- Логи событий сервера (маршрутизация события → канал) ----
+  // Структура: { logChannelId, events: { <key>: { enabled, channelId } } }.
+  getLogConfig(guildId) {
+    const stored = this.guild(guildId).settings?.logs || {};
+    return {
+      logChannelId: stored.logChannelId || this.config.logChannelId || null,
+      events: stored.events || {}
+    };
+  }
+
+  // Резолв канала для конкретного события: персональный override → мастер → admin.
+  // По умолчанию событие ВКЛ, если есть куда писать; off — только при явном enabled:false.
+  logChannelFor(guildId, eventKey) {
+    const cfg = this.getLogConfig(guildId);
+    const ev = cfg.events[eventKey] || {};
+    if (ev.enabled === false) return null;
+    return ev.channelId || cfg.logChannelId || this.config.adminChannelId || null;
+  }
+
+  setLogConfig(guildId, patch) {
+    const settings = this.guild(guildId).settings ||= {};
+    const logs = settings.logs ||= { events: {} };
+    logs.events ||= {};
+    if (!patch || typeof patch !== 'object') return this.getLogConfig(guildId);
+    if ('logChannelId' in patch) {
+      logs.logChannelId = patch.logChannelId ? String(patch.logChannelId) : null;
+    }
+    if (patch.events && typeof patch.events === 'object') {
+      for (const [key, value] of Object.entries(patch.events)) {
+        const cur = logs.events[key] ||= {};
+        if ('enabled' in value) cur.enabled = Boolean(value.enabled);
+        if ('channelId' in value) cur.channelId = value.channelId ? String(value.channelId) : null;
+      }
+    }
+    return this.getLogConfig(guildId);
+  }
+
   // ---- Статичная панель управления комнатами (id сообщения для обновления) ----
   getRoomPanelMessage(guildId) {
     return this.guild(guildId).roomPanelMessageId || null;
@@ -679,6 +833,260 @@ class Store {
 
   setRoomPanelMessage(guildId, messageId) {
     this.guild(guildId).roomPanelMessageId = messageId || null;
+  }
+
+  // ---- Статичная панель тикетов (id сообщения для обновления) ----
+  getTicketPanelMessage(guildId) {
+    return this.guild(guildId).ticketPanelMessageId || null;
+  }
+
+  setTicketPanelMessage(guildId, messageId) {
+    this.guild(guildId).ticketPanelMessageId = messageId || null;
+  }
+
+  // ---- Self-assign роли (конфиг + статичная панель) ----
+  // Запись: { roleId, label, description?, emoji? }. Хранится в settings.selfRoles.
+  getSelfRoles(guildId) {
+    const list = this.guild(guildId).settings?.selfRoles;
+    return Array.isArray(list) ? list : [];
+  }
+
+  setSelfRoles(guildId, list) {
+    const settings = this.guild(guildId).settings ||= {};
+    settings.selfRoles = Array.isArray(list) ? list.slice(0, 25) : [];
+    return settings.selfRoles;
+  }
+
+  addSelfRole(guildId, entry) {
+    const list = this.getSelfRoles(guildId).filter((role) => role.roleId !== entry.roleId);
+    list.push(entry);
+    return this.setSelfRoles(guildId, list);
+  }
+
+  removeSelfRole(guildId, roleId) {
+    return this.setSelfRoles(guildId, this.getSelfRoles(guildId).filter((role) => role.roleId !== roleId));
+  }
+
+  // Канал+сообщение статичной панели self-роли (для авто-обновления при правке конфига).
+  getSelfRolePanel(guildId) {
+    return this.guild(guildId).selfRolePanel || null;
+  }
+
+  setSelfRolePanel(guildId, channelId, messageId) {
+    this.guild(guildId).selfRolePanel = channelId && messageId ? { channelId, messageId } : null;
+  }
+
+  // ---- Сервер-босс (общий рейд) ----
+  // guild.boss = { name, maxHp, hp, reward, channelId, participants: {userId: dmg},
+  //   active, startedAt, defeatedAt? }. Урон наносят сообщения участников.
+  getBoss(guildId) {
+    return this.guild(guildId).boss || null;
+  }
+
+  startBoss(guildId, { name, maxHp, reward, channelId }) {
+    const boss = {
+      name: name || 'Древний голем',
+      maxHp: Math.max(100, Number(maxHp) || 10000),
+      hp: Math.max(100, Number(maxHp) || 10000),
+      reward: Math.max(0, Number(reward) || 5000),
+      channelId: channelId || null,
+      participants: {},
+      active: true,
+      startedAt: Date.now()
+    };
+    this.guild(guildId).boss = boss;
+    return boss;
+  }
+
+  // Нанести урон. Возвращает { defeated, boss } либо null, если босса нет/он мёртв.
+  damageBoss(guildId, userId, damage) {
+    const boss = this.getBoss(guildId);
+    if (!boss || !boss.active) return null;
+    const dmg = Math.max(1, Math.floor(Number(damage) || 1));
+    boss.hp = Math.max(0, boss.hp - dmg);
+    boss.participants[userId] = Number(boss.participants[userId] || 0) + dmg;
+    if (boss.hp <= 0) {
+      boss.active = false;
+      boss.defeatedAt = Date.now();
+      return { defeated: true, boss };
+    }
+    return { defeated: false, boss };
+  }
+
+  // Раздать лут после победы: монеты пропорционально урону, топ-1 получает эпический кейс.
+  // Возвращает [{ id, damage, coins, bonusCase }] по убыванию урона.
+  distributeBossLoot(guildId) {
+    const boss = this.getBoss(guildId);
+    if (!boss || boss.active) return [];
+    const entries = Object.entries(boss.participants)
+      .map(([id, damage]) => ({ id, damage: Number(damage) }))
+      .sort((a, b) => b.damage - a.damage);
+    const total = entries.reduce((sum, entry) => sum + entry.damage, 0);
+    if (total <= 0) return [];
+    return entries.map((entry, index) => {
+      const coins = Math.floor(boss.reward * (entry.damage / total));
+      const profile = this.getUser(guildId, entry.id);
+      let bonusCase = false;
+      if (profile) {
+        profile.balance = Number(profile.balance || 0) + coins;
+        if (index === 0) {
+          profile.cases ||= {};
+          profile.cases.epic = Number(profile.cases.epic || 0) + 1;
+          bonusCase = true;
+        }
+      }
+      return { id: entry.id, damage: entry.damage, coins, bonusCase };
+    });
+  }
+
+  // ---- Уведомления о стримах (Twitch) ----
+  // settings.streams = { channelId, roleId, streamers: [login...] }.
+  getStreamConfig(guildId) {
+    const stored = this.guild(guildId).settings?.streams || {};
+    return {
+      channelId: stored.channelId || null,
+      roleId: stored.roleId || null,
+      streamers: Array.isArray(stored.streamers) ? stored.streamers : []
+    };
+  }
+
+  setStreamChannel(guildId, channelId, roleId) {
+    const settings = this.guild(guildId).settings ||= {};
+    const streams = settings.streams ||= { streamers: [] };
+    streams.channelId = channelId || null;
+    streams.roleId = roleId || null;
+    return this.getStreamConfig(guildId);
+  }
+
+  addStreamer(guildId, login) {
+    const key = String(login || '').trim().toLowerCase();
+    if (!key) return this.getStreamConfig(guildId);
+    const settings = this.guild(guildId).settings ||= {};
+    const streams = settings.streams ||= { streamers: [] };
+    streams.streamers ||= [];
+    if (!streams.streamers.includes(key)) streams.streamers.push(key);
+    streams.streamers = streams.streamers.slice(0, 50);
+    return this.getStreamConfig(guildId);
+  }
+
+  removeStreamer(guildId, login) {
+    const key = String(login || '').trim().toLowerCase();
+    const settings = this.guild(guildId).settings ||= {};
+    const streams = settings.streams ||= { streamers: [] };
+    streams.streamers = (streams.streamers || []).filter((item) => item !== key);
+    return this.getStreamConfig(guildId);
+  }
+
+  // ---- Сезоны ----
+  // guild.season = { number, name, startedAt, endsAt, ended, endedAt? }.
+  getSeason(guildId) {
+    return this.guild(guildId).season || null;
+  }
+
+  // Сезонный XP пользователя (начисляется параллельно общему xp из активности).
+  addSeasonXp(guildId, userId, amount) {
+    const profile = this.getUser(guildId, userId);
+    if (!profile || !amount) return;
+    if (!this.getSeason(guildId)) return; // вне активного сезона не копим
+    profile.seasonXp = Math.max(0, Number(profile.seasonXp || 0)) + Math.floor(amount);
+  }
+
+  // Таблица сезона: пользователи с ненулевым seasonXp по убыванию.
+  seasonStandings(guildId, limit = 10) {
+    return this.users(guildId)
+      .filter((user) => Number(user.seasonXp || 0) > 0)
+      .sort((a, b) => Number(b.seasonXp || 0) - Number(a.seasonXp || 0))
+      .slice(0, limit)
+      .map((user) => ({ id: user.id, username: user.username, seasonXp: Number(user.seasonXp || 0) }));
+  }
+
+  // Старт нового сезона: сбрасывает seasonXp всех и заводит запись сезона.
+  startSeason(guildId, name, days) {
+    const prev = this.getSeason(guildId);
+    const number = (prev?.number || 0) + 1;
+    const now = Date.now();
+    for (const user of this.users(guildId)) user.seasonXp = 0;
+    const season = {
+      number,
+      name: name || `Сезон ${number}`,
+      startedAt: now,
+      endsAt: days > 0 ? now + days * 86400000 : null,
+      ended: false
+    };
+    this.guild(guildId).season = season;
+    return season;
+  }
+
+  // Завершить сезон: снимок таблицы, сброс seasonXp. Возвращает финальную таблицу.
+  endSeason(guildId) {
+    const season = this.getSeason(guildId);
+    if (!season || season.ended) return { season, standings: [] };
+    const standings = this.seasonStandings(guildId, 10);
+    season.ended = true;
+    season.endedAt = Date.now();
+    for (const user of this.users(guildId)) user.seasonXp = 0;
+    return { season, standings };
+  }
+
+  // Активный сезон с истёкшим сроком (для авто-завершения).
+  isSeasonDue(guildId) {
+    const season = this.getSeason(guildId);
+    return Boolean(season && !season.ended && season.endsAt && Number(season.endsAt) <= Date.now());
+  }
+
+  // ---- Розыгрыши (giveaway) ----
+  // Запись: { id, channelId, messageId, prize, winnersCount, endsAt, hostId, entrants:[], ended }.
+  giveaways(guildId) {
+    return this.guild(guildId).giveaways;
+  }
+
+  addGiveaway(guildId, giveaway) {
+    const entry = { entrants: [], ended: false, ...giveaway };
+    this.guild(guildId).giveaways.unshift(entry);
+    this.guild(guildId).giveaways = this.guild(guildId).giveaways.slice(0, 100);
+    return entry;
+  }
+
+  getGiveaway(guildId, id) {
+    return this.guild(guildId).giveaways.find((item) => item.id === id) || null;
+  }
+
+  // Добавить участника. Возвращает { ok, already }.
+  joinGiveaway(guildId, id, userId) {
+    const giveaway = this.getGiveaway(guildId, id);
+    if (!giveaway || giveaway.ended) return { ok: false, already: false };
+    if (giveaway.entrants.includes(userId)) return { ok: false, already: true };
+    giveaway.entrants.push(userId);
+    return { ok: true, already: false };
+  }
+
+  // Розыгрыши, у которых истёк срок и которые ещё не завершены.
+  dueGiveaways(guildId) {
+    const now = Date.now();
+    return this.guild(guildId).giveaways.filter((item) => !item.ended && Number(item.endsAt) <= now);
+  }
+
+  // Завершить розыгрыш: выбрать до winnersCount случайных победителей. Возвращает winners[].
+  endGiveaway(guildId, id) {
+    const giveaway = this.getGiveaway(guildId, id);
+    if (!giveaway || giveaway.ended) return [];
+    giveaway.ended = true;
+    const pool = [...giveaway.entrants];
+    const winners = [];
+    const count = Math.min(Number(giveaway.winnersCount) || 1, pool.length);
+    for (let i = 0; i < count; i += 1) {
+      const index = Math.floor(Math.random() * pool.length);
+      winners.push(pool.splice(index, 1)[0]);
+    }
+    giveaway.winners = winners;
+    return winners;
+  }
+
+  // Сквозной счётчик тикетов гильдии — для имён каналов тикет-N / жалоба-N.
+  nextTicketNumber(guildId) {
+    const guild = this.guild(guildId);
+    guild.ticketCounter = Number(guild.ticketCounter || 0) + 1;
+    return guild.ticketCounter;
   }
 
   // ---- Тикеты (обращения) ----

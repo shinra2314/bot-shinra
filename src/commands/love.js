@@ -1,5 +1,5 @@
-const { SlashCommandBuilder } = require('discord.js');
-const { COLORS, ICONS, ButtonStyle, button, errorPanel, mediaPanel, panel, reply, update } = require('../ui/components');
+const { ActionRowBuilder, ModalBuilder, SlashCommandBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { COLORS, ICONS, ButtonStyle, button, componentPayload, errorPanel, mediaPanel, panel, reply, select, update, userSelect } = require('../ui/components');
 const { displayName, formatCoins, formatDateTime, formatDuration, mentionUser, progressBar, timeAgo } = require('../utils/format');
 const { buildLoveCard } = require('../services/profileCard');
 
@@ -217,6 +217,74 @@ async function performLoveAction(interaction, context, action, type) {
   );
 }
 
+// Сменить название пары — общая логика для slash `/love статус` и кнопки панели.
+async function applyLoveTitle(interaction, context, title) {
+  const profile = context.store.ensureUser(interaction.guildId, interaction.user);
+  const cost = 300;
+  if (!context.store.relationshipForUser(interaction.guildId, interaction.user.id)) {
+    return reply(interaction, errorPanel('Сначала нужно создать пару через `/love предложить`.'), { ephemeral: true });
+  }
+  if (profile.balance < cost) {
+    return reply(interaction, errorPanel(`Изменение названия стоит **${formatCoins(cost)}**.`), { ephemeral: true });
+  }
+  profile.balance -= cost;
+  const relationship = context.store.updateRelationshipTitle(interaction.guildId, interaction.user.id, title);
+  context.store.recordTransaction(interaction.guildId, {
+    type: 'love',
+    fromId: interaction.user.id,
+    amount: cost,
+    note: 'love title'
+  });
+  await context.store.save();
+  return reply(interaction, panel({
+    title: 'Название пары обновлено',
+    icon: ICONS.success,
+    eyebrow: 'Отношения Onix',
+    description: `Теперь любовный профиль называется **${relationship.title}**.`,
+    color: COLORS.success,
+    footer: `Списано: ${formatCoins(cost)}`
+  }), { ephemeral: true });
+}
+
+// Статичная многофункциональная панель отношений (публикуется командой /панель).
+// Кнопки используют префикс love: → ловятся handleComponent этого модуля (ветка hub).
+function hubPanel(imageUrl) {
+  return panel({
+    imageUrl,
+    title: 'Отношения',
+    icon: ICONS.love,
+    eyebrow: 'Отношения Onix',
+    description: 'Создавайте пару, поднимайте настроение, дарите подарки и ведите общий профиль.',
+    color: COLORS.love,
+    footer: 'Кнопки работают для нажавшего. «Профиль» показывает вашу пару.',
+    actions: [
+      button('love:hub:profile', '💞 Профиль', ButtonStyle.Primary),
+      button('love:hub:propose', '💌 Предложить', ButtonStyle.Success),
+      button('love:hub:action', '🤗 Действие', ButtonStyle.Secondary),
+      button('love:hub:gift', '🎁 Подарок', ButtonStyle.Secondary),
+      button('love:hub:status', '✏️ Название', ButtonStyle.Secondary),
+      button('love:hub:break', '💔 Расстаться', ButtonStyle.Danger)
+    ]
+  });
+}
+
+function statusModal() {
+  return new ModalBuilder()
+    .setCustomId('love:hub:status-submit')
+    .setTitle('Название пары')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('title')
+          .setLabel('Новое название (списание 300 монет)')
+          .setStyle(TextInputStyle.Short)
+          .setMinLength(2)
+          .setMaxLength(40)
+          .setRequired(true)
+      )
+    );
+}
+
 const commands = [
   {
     data: new SlashCommandBuilder()
@@ -314,32 +382,7 @@ const commands = [
       }
 
       if (subcommand === 'статус') {
-        const title = interaction.options.getString('название', true);
-        const profile = context.store.ensureUser(interaction.guildId, interaction.user);
-        const cost = 300;
-        if (!context.store.relationshipForUser(interaction.guildId, interaction.user.id)) {
-          return reply(interaction, errorPanel('Сначала нужно создать пару через `/love предложить`.'), { ephemeral: true });
-        }
-        if (profile.balance < cost) {
-          return reply(interaction, errorPanel(`Изменение названия стоит **${formatCoins(cost)}**.`), { ephemeral: true });
-        }
-        profile.balance -= cost;
-        const relationship = context.store.updateRelationshipTitle(interaction.guildId, interaction.user.id, title);
-        context.store.recordTransaction(interaction.guildId, {
-          type: 'love',
-          fromId: interaction.user.id,
-          amount: cost,
-          note: 'love title'
-        });
-        await context.store.save();
-        return reply(interaction, panel({
-          title: 'Название пары обновлено',
-          icon: ICONS.success,
-          eyebrow: 'Отношения Onix',
-          description: `Теперь любовный профиль называется **${relationship.title}**.`,
-          color: COLORS.success,
-          footer: `Списано: ${formatCoins(cost)}`
-        }));
+        return applyLoveTitle(interaction, context, interaction.options.getString('название', true));
       }
 
       if (!context.store.relationshipForUser(interaction.guildId, interaction.user.id)) {
@@ -367,10 +410,18 @@ const commands = [
 ];
 
 async function handleComponent(interaction, context) {
-  if (!interaction.isButton()) return false;
+  const isModal = interaction.isModalSubmit?.();
+  const isUserSel = interaction.isUserSelectMenu?.();
+  const isStringSel = interaction.isStringSelectMenu?.();
+  if (!interaction.isButton() && !isModal && !isUserSel && !isStringSel) return false;
   if (!interaction.customId.startsWith('love:')) return false;
 
   const [, action, id] = interaction.customId.split(':');
+
+  if (action === 'hub') {
+    return handleLoveHub(interaction, context, id);
+  }
+
   if (action === 'cancel') {
     if (interaction.user.id !== id) {
       await reply(interaction, errorPanel('Это меню открыто для другого пользователя.'), { ephemeral: true });
@@ -462,7 +513,155 @@ async function handleComponent(interaction, context) {
   return true;
 }
 
+async function handleProposePick(interaction, context) {
+  const targetId = interaction.values[0];
+  if (targetId === interaction.user.id) {
+    await reply(interaction, errorPanel('С самим собой отношения не оформить.'), { ephemeral: true });
+    return true;
+  }
+  const target = await interaction.client.users.fetch(targetId).catch(() => null);
+  if (!target || target.bot) {
+    await reply(interaction, errorPanel('Боту лучше не предлагать отношения.'), { ephemeral: true });
+    return true;
+  }
+
+  const proposerProfile = context.store.ensureUser(interaction.guildId, interaction.user);
+  const targetProfile = context.store.ensureUser(interaction.guildId, target);
+  if (proposerProfile.lovePartnerId) {
+    await reply(interaction, errorPanel('У тебя уже есть пара.'), { ephemeral: true });
+    return true;
+  }
+  if (targetProfile.lovePartnerId) {
+    await reply(interaction, errorPanel('У этого пользователя уже есть пара.'), { ephemeral: true });
+    return true;
+  }
+
+  const proposal = context.store.createLoveProposal(interaction.guildId, {
+    id: interaction.id,
+    proposerId: interaction.user.id,
+    targetId: target.id,
+    message: ''
+  });
+  await context.store.save();
+  await interaction.channel
+    ?.send(componentPayload(proposalPanel(proposal), { allowedMentions: { users: [target.id] } }))
+    .catch(() => null);
+  await update(interaction, panel({
+    title: 'Предложение отправлено',
+    icon: ICONS.success,
+    eyebrow: 'Отношения Onix',
+    description: `Предложение для ${mentionUser(target.id)} отправлено в канал.`,
+    color: COLORS.success
+  }));
+  return true;
+}
+
+// Диспетчер кнопок статичной панели отношений (customId `love:hub:<fn>`).
+async function handleLoveHub(interaction, context, sub) {
+  const guildError = requireGuild(interaction);
+  if (guildError) {
+    await reply(interaction, errorPanel(guildError), { ephemeral: true });
+    return true;
+  }
+  context.store.ensureUser(interaction.guildId, interaction.user);
+
+  if (sub === 'profile') {
+    const { components, files } = await relationshipPanel(interaction, context, interaction.user);
+    await reply(interaction, components, { files, ephemeral: true });
+    return true;
+  }
+
+  if (sub === 'action') {
+    await reply(interaction, panel({
+      title: 'Действие для пары',
+      icon: ICONS.love,
+      eyebrow: 'Отношения Onix',
+      description: 'Выбери действие — оно поднимет настроение и XP пары.',
+      color: COLORS.love,
+      actions: [select('love:hub:action-pick', 'Действие', Object.entries(LOVE_ACTIONS).map(([value, item]) => ({
+        label: item.label,
+        value,
+        description: item.cost ? `${item.cost} мон. • +${item.mood} настроение` : `бесплатно • +${item.mood} настроение`
+      })))]
+    }), { ephemeral: true });
+    return true;
+  }
+  if (sub === 'action-pick') {
+    const type = interaction.values[0];
+    await performLoveAction(interaction, context, LOVE_ACTIONS[type], type);
+    return true;
+  }
+
+  if (sub === 'gift') {
+    await reply(interaction, panel({
+      title: 'Подарок паре',
+      icon: ICONS.gift,
+      eyebrow: 'Отношения Onix',
+      description: 'Выбери подарок для своей пары.',
+      color: COLORS.love,
+      actions: [select('love:hub:gift-pick', 'Подарок', Object.entries(LOVE_GIFTS).map(([value, item]) => ({
+        label: item.label,
+        value,
+        description: `${item.cost} мон. • +${item.mood} настроение`
+      })))]
+    }), { ephemeral: true });
+    return true;
+  }
+  if (sub === 'gift-pick') {
+    const type = interaction.values[0];
+    await performLoveAction(interaction, context, LOVE_GIFTS[type], type);
+    return true;
+  }
+
+  if (sub === 'propose') {
+    await reply(interaction, panel({
+      title: 'Предложить отношения',
+      icon: ICONS.love,
+      eyebrow: 'Отношения Onix',
+      description: 'Выбери, кому предложить стать парой.',
+      color: COLORS.love,
+      actions: [userSelect('love:hub:propose-pick', 'Кому предложить', 1, 1)]
+    }), { ephemeral: true });
+    return true;
+  }
+  if (sub === 'propose-pick') {
+    return handleProposePick(interaction, context);
+  }
+
+  if (sub === 'status') {
+    await interaction.showModal(statusModal());
+    return true;
+  }
+  if (sub === 'status-submit') {
+    await applyLoveTitle(interaction, context, interaction.fields.getTextInputValue('title').trim());
+    return true;
+  }
+
+  if (sub === 'break') {
+    if (!context.store.relationshipForUser(interaction.guildId, interaction.user.id)) {
+      await reply(interaction, errorPanel('У тебя сейчас нет пары.'), { ephemeral: true });
+      return true;
+    }
+    await reply(interaction, panel({
+      title: 'Расстаться',
+      icon: '💔',
+      eyebrow: 'Отношения Onix',
+      description: `${mentionUser(interaction.user.id)}, подтвердите завершение отношений.`,
+      color: COLORS.danger,
+      footer: 'Это действие сбросит текущую пару и серию заботы.',
+      actions: [
+        button(`love:break:${interaction.user.id}`, 'Подтвердить', ButtonStyle.Danger),
+        button(`love:cancel:${interaction.user.id}`, 'Назад', ButtonStyle.Secondary)
+      ]
+    }), { ephemeral: true });
+    return true;
+  }
+
+  return false;
+}
+
 module.exports = {
   commands,
-  handleComponent
+  handleComponent,
+  hubPanel
 };

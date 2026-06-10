@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { COLORS, ICONS, errorPanel, mediaPanel, reply, select, update } = require('../ui/components');
+const { COLORS, ICONS, ButtonStyle, button, errorPanel, mediaPanel, panel, reply, select, update } = require('../ui/components');
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 const { formatCoins, formatMinutes, levelFromXp, mentionUser } = require('../utils/format');
@@ -128,6 +128,20 @@ async function topResponse(context, interaction, metric) {
   return { components, files: card?.files };
 }
 
+// Статичная панель топов (публикуется /панель). Кнопка открывает лидерборд
+// с селектором метрики, привязанным к кликнувшему.
+function hubPanel(imageUrl) {
+  return panel({
+    imageUrl,
+    title: 'Топы сервера',
+    icon: ICONS.tops,
+    eyebrow: 'Топы Onix',
+    description: 'Лидерборды по балансу, онлайну, комнатам, любви, уровню и кланам. Открой и переключай метрику в меню.',
+    color: COLORS.primary,
+    actions: [button('top:hub:open', '🏆 Открыть топы', ButtonStyle.Primary)]
+  });
+}
+
 const commands = [
   {
     data: new SlashCommandBuilder()
@@ -153,6 +167,15 @@ const commands = [
 ];
 
 async function handleComponent(interaction, context) {
+  if (!interaction.customId?.startsWith('top:')) return false;
+
+  // Кнопка статичной панели: открыть лидерборд лично кликнувшему.
+  if (interaction.isButton?.() && interaction.customId === 'top:hub:open') {
+    const response = await topResponse(context, interaction, 'баланс');
+    await reply(interaction, response.components, { files: response.files, ephemeral: true });
+    return true;
+  }
+
   if (!interaction.isStringSelectMenu() || !interaction.customId.startsWith('top:metric:')) return false;
 
   const ownerId = interaction.customId.split(':')[2];
@@ -173,5 +196,6 @@ async function handleComponent(interaction, context) {
 
 module.exports = {
   commands,
-  handleComponent
+  handleComponent,
+  hubPanel
 };

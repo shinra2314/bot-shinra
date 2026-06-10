@@ -1,10 +1,11 @@
-const { COLORS, ICONS, ButtonStyle, button, panel } = require('./components');
+const { COLORS, ICONS, ButtonStyle, button, mediaPanel, panel } = require('./components');
 
 // Статичная панель управления комнатами для текстового канала-хаба.
 // Видна всем; кнопка «Управление» открывает эфемерную личную панель владельца
 // (customId без channelId — комната ищется по кликнувшему). Покупка — только в /shop.
-function roomHubPanel() {
-  return panel({
+// imageUrl (опц.) — баннер-карта (attachment://card.png) сверху панели.
+function roomHubPanel(imageUrl) {
+  const spec = {
     title: 'Личные голосовые комнаты',
     icon: ICONS.voice,
     eyebrow: 'Комнаты Onix',
@@ -22,7 +23,9 @@ function roomHubPanel() {
     actions: [
       button('room:mypanel', '⚙️ Управление моей комнатой', ButtonStyle.Primary)
     ]
-  });
+  };
+
+  return imageUrl ? mediaPanel({ ...spec, imageUrl }) : panel(spec);
 }
 
 module.exports = { roomHubPanel };

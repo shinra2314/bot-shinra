@@ -1,10 +1,12 @@
 const { SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 const { COLORS, ICONS, ButtonStyle, button, errorPanel, mediaPanel, panel, reply, roleSelect, select, update } = require('../ui/components');
-const { displayName, formatCoins, levelFromXp, mentionUser } = require('../utils/format');
-const { PROFILE_CATALOG, findCatalogItem, buildProfileCard } = require('../services/profileCard');
+const { displayName, formatCoins, formatDuration, levelFromXp, mentionUser } = require('../utils/format');
+const { PROFILE_CATALOG, findCatalogItem, buildProfileCard, buildRepCard } = require('../services/profileCard');
 const achievements = require('../services/achievements');
+const quests = require('../services/quests');
 
 const HOUR_MS = 60 * 60 * 1000;
+const REP_COOLDOWN_MS = 12 * HOUR_MS;
 
 // Теги активности по скользящим окнам (как «#Самый активный / #За 2 часа»).
 function activityTags(store, guildId, userId) {
@@ -162,8 +164,9 @@ function profileSummaryPanel(context, guildId, ownerId, user, profile) {
     color: COLORS.profile,
     thumbnail: user.displayAvatarURL({ size: 256 }),
     stats: [
-      { icon: ICONS.level, name: 'Уровень', value: String(level.level) },
+      { icon: ICONS.level, name: 'Уровень', value: profile.prestige > 0 ? `${level.level} 👑${profile.prestige}` : String(level.level) },
       { icon: ICONS.coins, name: 'Баланс', value: formatCoins(profile.balance) },
+      { icon: ICONS.star, name: 'Репутация', value: String(profile.reputation || 0) },
       { icon: ICONS.clan, name: 'Клан', value: clan?.name || 'нет' }
     ],
     statColumns: 1,
@@ -175,6 +178,46 @@ function profileSummaryPanel(context, guildId, ownerId, user, profile) {
       button(`profile:achievements:${ownerId}:${user.id}`, '🏆 Достижения', ButtonStyle.Secondary)
     ]
   });
+}
+
+// Полная карточка профиля (canvas) + панель с действиями. Используется и слэш-командой,
+// и кнопкой hub-панели — чтобы в обоих местах был один и тот же визуал с картинкой.
+async function fullProfileReply(context, interaction, target, { ephemeral = false } = {}) {
+  const profile = context.store.ensureUser(interaction.guildId, target);
+  const users = context.store.users(interaction.guildId);
+  const member = interaction.guild ? await interaction.guild.members.fetch(target.id).catch(() => null) : null;
+  const liveMinutes = member ? await context.voiceTracker.syncMember(member) : context.voiceTracker.currentMinutes(interaction.guildId, target.id);
+  const clan = context.store.userClan(interaction.guildId, target.id);
+  const rank = rankPosition(users, target.id, (user) => user.xp || 0);
+  const relationship = context.store.relationshipForUser(interaction.guildId, target.id);
+  const loveLine = relationship
+    ? `Любовный профиль: **${relationship.title || 'Активен'}**, ${relationship.xp || 0} XP`
+    : `Любовный профиль: **${profile.lovePartnerId ? 'активен' : 'нет пары'}**`;
+  achievements.grant(profile);
+  const presenceStatus = member?.presence?.status || null;
+  const tags = activityTags(context.store, interaction.guildId, target.id);
+  const card = await buildProfileCard({ user: target, member, profile, clan, rank, liveMinutes, presenceStatus, tags });
+  await context.store.save();
+
+  return reply(
+    interaction,
+    mediaPanel({
+      title: `Профиль персонажа — ${displayName(target)}`,
+      icon: ICONS.profile,
+      eyebrow: 'Профиль Onix',
+      description: mentionUser(target.id),
+      lines: [loveLine, `${ICONS.star} Репутация: **${profile.reputation || 0}**`],
+      imageUrl: card.imageUrl,
+      color: COLORS.profile,
+      actions: [
+        button(`profile:customize-open:${interaction.user.id}:${target.id}`, '⚙ Настроить', ButtonStyle.Primary, interaction.user.id !== target.id),
+        button(`profile:favorites-open:${interaction.user.id}:${target.id}`, '⭐ Любимые роли', ButtonStyle.Secondary, interaction.user.id !== target.id),
+        button(`profile:catalog-open:${interaction.user.id}:${target.id}`, '🛍 Каталог', ButtonStyle.Secondary),
+        button(`profile:achievements-open:${interaction.user.id}:${target.id}`, '🏆 Достижения', ButtonStyle.Secondary)
+      ]
+    }),
+    { files: card.files, ephemeral }
+  );
 }
 
 function applyCustomization(profile, option, item) {
@@ -215,6 +258,23 @@ function addChoiceOptions(subcommand) {
     .addStringOption((option) =>
       option.setName('любимые-роли').setDescription('Любимые роли через запятую').setMaxLength(120)
     );
+}
+
+// Статичная панель профиля (публикуется /панель). Кнопки открывают личные панели кликнувшего.
+function hubPanel(imageUrl) {
+  return panel({
+    imageUrl,
+    title: 'Профиль',
+    icon: ICONS.profile,
+    eyebrow: 'Профиль Onix',
+    description: 'Твой профиль персонажа, кастомизация карточки, любимые роли и достижения.',
+    color: COLORS.profile,
+    footer: 'Кнопки открывают твой профиль лично для тебя.',
+    actions: [
+      button('profile:hub:summary', '👤 Мой профиль', ButtonStyle.Primary),
+      button('profile:hub:customize', '⚙ Настройка', ButtonStyle.Secondary)
+    ]
+  });
 }
 
 const commands = [
@@ -296,40 +356,79 @@ const commands = [
       }
 
       const target = interaction.options.getUser('user') || interaction.user;
+      return fullProfileReply(context, interaction, target);
+    }
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName('реп')
+      .setDescription('Повысить репутацию участника (раз в 12 часов)')
+      .addUserOption((option) =>
+        option.setName('user').setDescription('Кому поднять репутацию').setRequired(true)
+      ),
+    async execute(interaction, context) {
+      const guildError = requireGuild(interaction);
+      if (guildError) return reply(interaction, errorPanel(guildError), { ephemeral: true });
+
+      const target = interaction.options.getUser('user');
+      if (target.bot) {
+        return reply(interaction, errorPanel('Боту нельзя поднять репутацию.'), { ephemeral: true });
+      }
+      if (target.id === interaction.user.id) {
+        return reply(interaction, errorPanel('Нельзя поднять репутацию самому себе.'), { ephemeral: true });
+      }
+
+      const giver = context.store.ensureUser(interaction.guildId, interaction.user);
+      const availableAt = Number(giver.lastRepAt || 0) + REP_COOLDOWN_MS;
+      if (Date.now() < availableAt) {
+        return reply(
+          interaction,
+          panel({
+            title: 'Репутация',
+            icon: ICONS.time,
+            eyebrow: 'Социальный рейтинг Onix',
+            description: `${mentionUser(interaction.user.id)}, Вы недавно уже поднимали репутацию.\nСледующую можно выдать через **${formatDuration(availableAt - Date.now())}**.`,
+            color: COLORS.warning
+          }),
+          { ephemeral: true }
+        );
+      }
+
       const profile = context.store.ensureUser(interaction.guildId, target);
-      const users = context.store.users(interaction.guildId);
-      const member = interaction.guild ? await interaction.guild.members.fetch(target.id).catch(() => null) : null;
-      const liveMinutes = member ? await context.voiceTracker.syncMember(member) : context.voiceTracker.currentMinutes(interaction.guildId, target.id);
-      const clan = context.store.userClan(interaction.guildId, target.id);
-      const rank = rankPosition(users, target.id, (user) => user.xp || 0);
-      const relationship = context.store.relationshipForUser(interaction.guildId, target.id);
-      const loveLine = relationship
-        ? `Любовный профиль: **${relationship.title || 'Активен'}**, ${relationship.xp || 0} XP`
-        : `Любовный профиль: **${profile.lovePartnerId ? 'активен' : 'нет пары'}**`;
-      achievements.grant(profile);
-      const presenceStatus = member?.presence?.status || null;
-      const tags = activityTags(context.store, interaction.guildId, target.id);
-      const card = await buildProfileCard({ user: target, member, profile, clan, rank, liveMinutes, presenceStatus, tags });
+      profile.reputation = Number(profile.reputation || 0) + 1;
+      giver.lastRepAt = Date.now();
+      quests.progress(giver, 'rep');
       await context.store.save();
+
+      const card = await buildRepCard({ user: target, profile }).catch(() => null);
+      if (card) {
+        return reply(
+          interaction,
+          mediaPanel({
+            title: 'Репутация повышена',
+            icon: ICONS.star,
+            eyebrow: 'Социальный рейтинг Onix',
+            description: `${mentionUser(interaction.user.id)} поднял репутацию ${mentionUser(target.id)}! ${ICONS.star}`,
+            color: COLORS.success,
+            imageUrl: card.imageUrl,
+            lines: [`${ICONS.star} Репутация ${mentionUser(target.id)}: **${profile.reputation}**`]
+          }),
+          { files: card.files, ephemeral: false }
+        );
+      }
 
       return reply(
         interaction,
-        mediaPanel({
-          title: `Профиль персонажа — ${displayName(target)}`,
-          icon: ICONS.profile,
-          eyebrow: 'Профиль Onix',
-          description: mentionUser(target.id),
-          lines: [loveLine],
-          imageUrl: card.imageUrl,
-          color: COLORS.profile,
-          actions: [
-            button(`profile:customize-open:${interaction.user.id}:${target.id}`, '⚙ Настроить', ButtonStyle.Primary, interaction.user.id !== target.id),
-            button(`profile:favorites-open:${interaction.user.id}:${target.id}`, '⭐ Любимые роли', ButtonStyle.Secondary, interaction.user.id !== target.id),
-            button(`profile:catalog-open:${interaction.user.id}:${target.id}`, '🛍 Каталог', ButtonStyle.Secondary),
-            button(`profile:achievements-open:${interaction.user.id}:${target.id}`, '🏆 Достижения', ButtonStyle.Secondary)
-          ]
+        panel({
+          title: 'Репутация повышена',
+          icon: ICONS.star,
+          eyebrow: 'Социальный рейтинг Onix',
+          description: `${mentionUser(interaction.user.id)} поднял репутацию ${mentionUser(target.id)}!`,
+          color: COLORS.success,
+          thumbnail: target.displayAvatarURL({ size: 256 }),
+          stats: [{ icon: ICONS.star, name: 'Репутация', value: String(profile.reputation) }]
         }),
-        { files: card.files }
+        { ephemeral: false }
       );
     }
   }
@@ -343,6 +442,18 @@ async function handleComponent(interaction, context) {
   if (!interaction.isButton() && !interaction.isStringSelectMenu() && !isRoleSelect && !isModal) return false;
 
   const parts = interaction.customId.split(':');
+
+  // Кнопки статичной панели: открыть свой профиль/настройку (ownerId = кликнувший).
+  if (parts[1] === 'hub') {
+    const selfProfile = context.store.ensureUser(interaction.guildId, interaction.user);
+    if (parts[2] === 'customize') {
+      await reply(interaction, customizationHubPanel(selfProfile, interaction.user.id), { ephemeral: true });
+    } else {
+      await fullProfileReply(context, interaction, interaction.user, { ephemeral: true });
+    }
+    return true;
+  }
+
   const action = parts[1];
   const ownerId = parts.length >= 4 ? parts[2] : interaction.user.id;
   const userId = parts.length >= 4 ? parts[3] : parts[2];
@@ -510,5 +621,6 @@ async function handleComponent(interaction, context) {
 
 module.exports = {
   commands,
-  handleComponent
+  handleComponent,
+  hubPanel
 };

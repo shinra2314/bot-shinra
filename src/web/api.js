@@ -5,6 +5,7 @@
 const express = require('express');
 const { sendToChannel, listTextChannels, listGuilds } = require('./botBridge');
 const { ECONOMY_SETTING_KEYS } = require('../services/store');
+const { LOG_EVENTS } = require('../services/eventLogger');
 
 const MAX_MESSAGE_LEN = 2000;
 
@@ -262,6 +263,48 @@ function createApiRouter(context) {
       await store.save();
     }
     res.json(store.economySettings(req.params.gid));
+  }));
+
+  // ---- автомодерация ----
+  router.get('/guilds/:gid/automod', asyncRoute(async (req, res) => {
+    res.json(store.getAutomodConfig(req.params.gid));
+  }));
+
+  router.patch('/guilds/:gid/automod', asyncRoute(async (req, res) => {
+    const patch = req.body && typeof req.body === 'object' ? req.body : {};
+    const updated = store.setAutomodConfig(req.params.gid, patch);
+    store.addAuditEntry(req.params.gid, {
+      action: 'automod_config',
+      actor: 'web',
+      detail: `Автомод: ${Object.keys(patch).join(', ') || '—'}`
+    });
+    await store.save();
+    res.json(updated);
+  }));
+
+  router.get('/guilds/:gid/automod/log', asyncRoute(async (req, res) => {
+    const entries = store.automodLog(req.params.gid).map((e) => ({
+      ...e,
+      userName: userName(req.params.gid, e.userId)
+    }));
+    res.json(entries);
+  }));
+
+  // ---- логи событий ----
+  router.get('/guilds/:gid/logs', asyncRoute(async (req, res) => {
+    res.json({ config: store.getLogConfig(req.params.gid), catalog: LOG_EVENTS });
+  }));
+
+  router.patch('/guilds/:gid/logs', asyncRoute(async (req, res) => {
+    const patch = req.body && typeof req.body === 'object' ? req.body : {};
+    const updated = store.setLogConfig(req.params.gid, patch);
+    store.addAuditEntry(req.params.gid, {
+      action: 'logs_config',
+      actor: 'web',
+      detail: 'Обновлены настройки логов'
+    });
+    await store.save();
+    res.json({ config: updated, catalog: LOG_EVENTS });
   }));
 
   // ---- send-as-bot (admin composer) ----

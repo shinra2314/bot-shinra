@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { ActionRowBuilder, ModalBuilder, SlashCommandBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const {
   COLORS,
   ICONS,
@@ -49,6 +49,40 @@ function queuePanel(player, title = 'Музыка') {
       button('music:stop', 'Стоп', ButtonStyle.Danger, !player.current && player.queue.length === 0)
     ]
   });
+}
+
+// Статичная панель музыки (публикуется /панель).
+function hubPanel(imageUrl) {
+  return panel({
+    imageUrl,
+    title: 'Музыка',
+    icon: ICONS.music,
+    eyebrow: 'Музыка Onix',
+    description: 'Контроллер очереди. «Включить» — добавить трек, «Очередь» — управление воспроизведением.',
+    color: COLORS.music,
+    footer: 'Это UI-контроллер (реальный аудио-движок не подключён).',
+    actions: [
+      button('music:hub:play', '▶️ Включить', ButtonStyle.Success),
+      button('music:hub:queue', '🎶 Очередь', ButtonStyle.Primary)
+    ]
+  });
+}
+
+function playModal() {
+  return new ModalBuilder()
+    .setCustomId('music:hub:play-submit')
+    .setTitle('Включить трек')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('query')
+          .setLabel('Название или ссылка')
+          .setStyle(TextInputStyle.Short)
+          .setMinLength(2)
+          .setMaxLength(200)
+          .setRequired(true)
+      )
+    );
 }
 
 const commands = [
@@ -135,11 +169,35 @@ const commands = [
 ];
 
 async function handleComponent(interaction, context) {
-  if (!interaction.isButton()) return false;
+  const isModal = interaction.isModalSubmit?.();
+  if (!interaction.isButton() && !isModal) return false;
   if (!interaction.customId.startsWith('music:')) return false;
 
   const player = playerFor(context.state, interaction.guildId);
-  const action = interaction.customId.split(':')[1];
+  const parts = interaction.customId.split(':');
+
+  // Кнопки статичной панели: личный (эфемерный) контроллер очереди.
+  if (parts[1] === 'hub') {
+    if (parts[2] === 'play') {
+      await interaction.showModal(playModal());
+      return true;
+    }
+    if (parts[2] === 'play-submit') {
+      const query = interaction.fields.getTextInputValue('query').trim();
+      if (!player.current) {
+        player.current = query;
+        player.paused = false;
+      } else {
+        player.queue.push(query);
+      }
+      await reply(interaction, queuePanel(player, 'Трек добавлен'), { ephemeral: true });
+      return true;
+    }
+    await reply(interaction, queuePanel(player, 'Музыка'), { ephemeral: true });
+    return true;
+  }
+
+  const action = parts[1];
 
   if (action === 'pause' && player.current) {
     player.paused = true;
@@ -174,5 +232,6 @@ async function handleComponent(interaction, context) {
 
 module.exports = {
   commands,
-  handleComponent
+  handleComponent,
+  hubPanel
 };

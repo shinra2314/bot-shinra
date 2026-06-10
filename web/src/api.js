@@ -39,5 +39,10 @@ export const api = {
   adjustUser: (gid, id, payload) => request('POST', `/guilds/${gid}/users/${id}/adjust`, payload),
   settings: (gid) => request('GET', `/guilds/${gid}/settings`),
   patchSettings: (gid, patch) => request('PATCH', `/guilds/${gid}/settings`, patch),
+  automod: (gid) => request('GET', `/guilds/${gid}/automod`),
+  patchAutomod: (gid, patch) => request('PATCH', `/guilds/${gid}/automod`, patch),
+  automodLog: (gid) => request('GET', `/guilds/${gid}/automod/log`),
+  logs: (gid) => request('GET', `/guilds/${gid}/logs`),
+  patchLogs: (gid, patch) => request('PATCH', `/guilds/${gid}/logs`, patch),
   send: (payload) => request('POST', '/send', payload)
 };

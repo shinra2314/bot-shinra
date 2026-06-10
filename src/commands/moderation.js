@@ -1,5 +1,5 @@
-const { PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
-const { COLORS, ICONS, componentPayload, errorPanel, panel, reply, successPanel, update } = require('../ui/components');
+const { ActionRowBuilder, ModalBuilder, PermissionFlagsBits, SlashCommandBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { COLORS, ICONS, ButtonStyle, button, componentPayload, errorPanel, panel, reply, successPanel, update, userSelect } = require('../ui/components');
 const { formatDateTime, mentionUser, truncate } = require('../utils/format');
 
 function requireGuild(interaction) {
@@ -23,6 +23,84 @@ async function sendAdminCopy(interaction, context, components) {
   if (!channel?.isTextBased()) return false;
   await channel.send(componentPayload(components));
   return true;
+}
+
+function reportsComponents(guild) {
+  const reports = guild.reports.filter((report) => report.status === 'ожидает проверки').slice(0, 10);
+  return panel({
+    title: 'Очередь жалоб',
+    icon: ICONS.moderation,
+    eyebrow: 'Модерация Onix',
+    description: reports.length ? 'Репорты ожидают проверки.' : 'Очередь пустая.',
+    color: COLORS.danger,
+    lines: reports.map(reportLine)
+  });
+}
+
+async function applyWarn(interaction, context, target, reason) {
+  context.store.ensureUser(interaction.guildId, target);
+  context.store.addModerationAction(interaction.guildId, {
+    type: 'warn',
+    targetId: target.id,
+    moderatorId: interaction.user.id,
+    reason
+  });
+  await context.store.save();
+  context.eventLogger?.emit(interaction.guildId, 'warnAdd', {
+    description: `${mentionUser(target.id)} получил предупреждение.`,
+    fields: [{ name: 'Причина', value: truncate(reason, 500) }],
+    footer: `Модератор: ${interaction.user.username}`
+  });
+  return reply(interaction, successPanel(`${mentionUser(target.id)} получил warn.\nПричина: ${reason}`, 'Warn выдан'));
+}
+
+function historyComponents(context, guildId, target) {
+  const history = context.store.moderationHistoryFor(guildId, target.id, 10);
+  return panel({
+    title: `История наказаний — ${target.username}`,
+    icon: ICONS.moderation,
+    eyebrow: 'Модерация Onix',
+    description: mentionUser(target.id),
+    color: COLORS.danger,
+    lines: history.length
+      ? history.map((item) => `${ICONS.warning} **${item.type}** — ${formatDateTime(item.createdAt)}\n-# Модератор: ${mentionUser(item.moderatorId)} • ${item.reason || 'без причины'}`)
+      : ['История пустая.']
+  });
+}
+
+// Статичная панель модерации (публикуется /панель). Все кнопки — только для модераторов.
+function hubPanel(imageUrl) {
+  return panel({
+    imageUrl,
+    title: 'Модерация',
+    icon: ICONS.moderation,
+    eyebrow: 'Модерация Onix',
+    description: 'Очередь жалоб, выдача предупреждений и история наказаний.',
+    color: COLORS.danger,
+    footer: 'Кнопки доступны только модераторам (ModerateMembers / BanMembers / ManageGuild).',
+    actions: [
+      button('mod:hub:reports', '🛡️ Жалобы', ButtonStyle.Primary),
+      button('mod:hub:warn', '⚠️ Варн', ButtonStyle.Secondary),
+      button('mod:hub:history', '📜 История', ButtonStyle.Secondary)
+    ]
+  });
+}
+
+function warnModal(userId) {
+  return new ModalBuilder()
+    .setCustomId(`mod:hub:warn-reason:${userId}`)
+    .setTitle('Выдать предупреждение')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('reason')
+          .setLabel('Причина')
+          .setStyle(TextInputStyle.Paragraph)
+          .setMinLength(2)
+          .setMaxLength(500)
+          .setRequired(true)
+      )
+    );
 }
 
 const commands = [
@@ -54,43 +132,12 @@ const commands = [
       const guild = context.store.guild(interaction.guildId);
 
       if (subcommand === 'репорты') {
-        const reports = guild.reports.filter((report) => report.status === 'ожидает проверки').slice(0, 10);
-        return reply(interaction, panel({
-          title: 'Очередь жалоб',
-          icon: ICONS.moderation,
-          eyebrow: 'Модерация Onix',
-          description: reports.length ? 'Репорты ожидают проверки.' : 'Очередь пустая.',
-          color: COLORS.danger,
-          lines: reports.map(reportLine)
-        }), { ephemeral: true });
+        return reply(interaction, reportsComponents(guild), { ephemeral: true });
       }
-
       if (subcommand === 'варн') {
-        const target = interaction.options.getUser('user', true);
-        const reason = interaction.options.getString('причина', true);
-        context.store.ensureUser(interaction.guildId, target);
-        context.store.addModerationAction(interaction.guildId, {
-          type: 'warn',
-          targetId: target.id,
-          moderatorId: interaction.user.id,
-          reason
-        });
-        await context.store.save();
-        return reply(interaction, successPanel(`${mentionUser(target.id)} получил warn.\nПричина: ${reason}`, 'Warn выдан'));
+        return applyWarn(interaction, context, interaction.options.getUser('user', true), interaction.options.getString('причина', true));
       }
-
-      const target = interaction.options.getUser('user', true);
-      const history = context.store.moderationHistoryFor(interaction.guildId, target.id, 10);
-      return reply(interaction, panel({
-        title: `История наказаний — ${target.username}`,
-        icon: ICONS.moderation,
-        eyebrow: 'Модерация Onix',
-        description: mentionUser(target.id),
-        color: COLORS.danger,
-        lines: history.length
-          ? history.map((item) => `${ICONS.warning} **${item.type}** — ${formatDateTime(item.createdAt)}\n-# Модератор: ${mentionUser(item.moderatorId)} • ${item.reason || 'без причины'}`)
-          : ['История пустая.']
-      }), { ephemeral: true });
+      return reply(interaction, historyComponents(context, interaction.guildId, interaction.options.getUser('user', true)), { ephemeral: true });
     }
   },
   {
@@ -121,52 +168,77 @@ const commands = [
       }));
       return reply(interaction, successPanel('Апелляция отправлена модерации.', 'Апелляция'), { ephemeral: true });
     }
-  },
-  {
-    data: new SlashCommandBuilder()
-      .setName('ticket')
-      .setDescription('Тикеты')
-      .addSubcommand((subcommand) =>
-        subcommand
-          .setName('создать')
-          .setDescription('Создать тикет')
-          .addStringOption((option) => option.setName('тема').setDescription('Тема тикета').setMaxLength(120).setRequired(true))
-      ),
-    async execute(interaction, context) {
-      const guildError = requireGuild(interaction);
-      if (guildError) return reply(interaction, errorPanel(guildError), { ephemeral: true });
-
-      const ticket = context.store.addTicket(interaction.guildId, {
-        userId: interaction.user.id,
-        topic: interaction.options.getString('тема', true),
-        source: 'discord'
-      });
-      await context.store.save();
-      await sendAdminCopy(interaction, context, panel({
-        title: 'Новый тикет',
-        icon: '🎫',
-        eyebrow: 'Поддержка Onix',
-        description: `${mentionUser(interaction.user.id)} создал тикет.`,
-        color: COLORS.info,
-        fields: [
-          { name: '🗂 Тема', value: ticket.topic },
-          { name: '🆔 ID', value: ticket.id }
-        ]
-      }));
-      return reply(interaction, successPanel(`Тикет создан.\nID: \`${ticket.id}\``, 'Тикет'), { ephemeral: true });
-    }
   }
 ];
 
 async function handleComponent(interaction, context) {
-  if (!interaction.isButton()) return false;
+  const isModal = interaction.isModalSubmit?.();
+  const isUserSel = interaction.isUserSelectMenu?.();
+  if (!interaction.isButton() && !isModal && !isUserSel) return false;
   if (!interaction.customId.startsWith('mod:')) return false;
   if (!canModerate(interaction)) {
     await reply(interaction, errorPanel('Недостаточно прав модерации.'), { ephemeral: true });
     return true;
   }
 
-  const [, action, reportId] = interaction.customId.split(':');
+  const parts = interaction.customId.split(':');
+
+  // Кнопки статичной панели модерации (mod:hub:*).
+  if (parts[1] === 'hub') {
+    const sub = parts[2];
+    if (sub === 'reports') {
+      await reply(interaction, reportsComponents(context.store.guild(interaction.guildId)), { ephemeral: true });
+      return true;
+    }
+    if (sub === 'warn') {
+      await reply(interaction, panel({
+        title: 'Выдать предупреждение',
+        icon: ICONS.moderation,
+        eyebrow: 'Модерация Onix',
+        description: 'Выбери пользователя.',
+        color: COLORS.danger,
+        actions: [userSelect('mod:hub:warn-pick', 'Кому выдать warn', 1, 1)]
+      }), { ephemeral: true });
+      return true;
+    }
+    if (sub === 'warn-pick') {
+      await interaction.showModal(warnModal(interaction.values[0]));
+      return true;
+    }
+    if (sub === 'warn-reason') {
+      const target = await interaction.client.users.fetch(parts[3]).catch(() => null);
+      if (!target) {
+        await reply(interaction, errorPanel('Пользователь не найден.'), { ephemeral: true });
+        return true;
+      }
+      await applyWarn(interaction, context, target, interaction.fields.getTextInputValue('reason').trim());
+      return true;
+    }
+    if (sub === 'history') {
+      await reply(interaction, panel({
+        title: 'История наказаний',
+        icon: ICONS.moderation,
+        eyebrow: 'Модерация Onix',
+        description: 'Выбери пользователя.',
+        color: COLORS.danger,
+        actions: [userSelect('mod:hub:history-pick', 'Чью историю показать', 1, 1)]
+      }), { ephemeral: true });
+      return true;
+    }
+    if (sub === 'history-pick') {
+      const target = await interaction.client.users.fetch(interaction.values[0]).catch(() => null);
+      if (!target) {
+        await reply(interaction, errorPanel('Пользователь не найден.'), { ephemeral: true });
+        return true;
+      }
+      await reply(interaction, historyComponents(context, interaction.guildId, target), { ephemeral: true });
+      return true;
+    }
+    return true;
+  }
+
+  if (!interaction.isButton()) return false;
+  const [, action, reportId] = parts;
   const report = context.store.guild(interaction.guildId).reports.find((item) => item.id === reportId);
   if (!report) {
     await reply(interaction, errorPanel('Репорт не найден.'), { ephemeral: true });
@@ -236,5 +308,6 @@ async function handleComponent(interaction, context) {
 
 module.exports = {
   commands,
-  handleComponent
+  handleComponent,
+  hubPanel
 };

@@ -165,7 +165,8 @@ function panel({
   actions = [],
   thumbnail,
   eyebrow,
-  icon
+  icon,
+  imageUrl
 }) {
   const container = new ContainerBuilder().setAccentColor(color);
   const header = buildHeader({ icon, title, eyebrow, description });
@@ -182,6 +183,13 @@ function panel({
     );
   } else {
     container.addTextDisplayComponents(text(header));
+  }
+
+  // Баннер-картинка (attachment://...) сразу под заголовком — для hub-панелей.
+  if (imageUrl) {
+    container.addMediaGalleryComponents(
+      new MediaGalleryBuilder().addItems((item) => item.setURL(imageUrl).setDescription(title || 'panel'))
+    );
   }
 
   const bodyBlocks = [];

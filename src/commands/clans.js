@@ -1,5 +1,5 @@
-const { SlashCommandBuilder } = require('discord.js');
-const { COLORS, ICONS, errorPanel, mediaPanel, panel, reply, successPanel } = require('../ui/components');
+const { ActionRowBuilder, ModalBuilder, SlashCommandBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { COLORS, ICONS, ButtonStyle, button, errorPanel, mediaPanel, panel, reply, successPanel } = require('../ui/components');
 const { formatCoins, formatDuration, formatMinutes, mentionUser } = require('../utils/format');
 const { buildClanCard, buildWarCard } = require('../services/profileCard');
 
@@ -102,6 +102,298 @@ async function clanProfilePanel(context, guildId, clan) {
   return { components, files: card?.files };
 }
 
+// ---- Извлечённая логика подкоманд (общая для slash и кнопок панели) ----
+
+async function createClan(interaction, context, { name, description }) {
+  const profile = context.store.ensureUser(interaction.guildId, interaction.user);
+  if (profile.clanId) {
+    return reply(interaction, errorPanel('Ты уже состоишь в клане. Сначала используй `/clan выйти`.'), { ephemeral: true });
+  }
+  const trimmed = String(name || '').trim();
+  if (trimmed.length < 2) {
+    return reply(interaction, errorPanel('Название клана должно быть от 2 символов.'), { ephemeral: true });
+  }
+  if (context.store.findClan(interaction.guildId, trimmed)) {
+    return reply(interaction, errorPanel('Клан с таким названием уже существует.'), { ephemeral: true });
+  }
+  const clan = context.store.createClan(interaction.guildId, {
+    id: `${Date.now().toString(36)}-${interaction.user.id}`,
+    name: trimmed,
+    description: description || 'Описание не указано.',
+    ownerId: interaction.user.id
+  });
+  profile.clanId = clan.id;
+  await context.store.save();
+  return reply(interaction, successPanel(`Клан **${trimmed}** создан.`, 'Клан создан'), { ephemeral: true });
+}
+
+async function joinClan(interaction, context, name) {
+  const profile = context.store.ensureUser(interaction.guildId, interaction.user);
+  if (profile.clanId) {
+    return reply(interaction, errorPanel('Ты уже состоишь в клане. Сначала используй `/clan выйти`.'), { ephemeral: true });
+  }
+  const clan = context.store.findClan(interaction.guildId, name);
+  if (!clan) return reply(interaction, errorPanel('Клан с таким названием не найден.'), { ephemeral: true });
+  clan.members ||= [];
+  if (!clan.members.includes(interaction.user.id)) clan.members.push(interaction.user.id);
+  profile.clanId = clan.id;
+  await context.store.save();
+  return reply(interaction, successPanel(`Ты вступил в клан **${clan.name}**.`, 'Добро пожаловать'), { ephemeral: true });
+}
+
+async function leaveClanAction(interaction, context) {
+  const clan = context.store.leaveClan(interaction.guildId, interaction.user.id);
+  if (!clan) return reply(interaction, errorPanel('Ты сейчас не состоишь в клане.'), { ephemeral: true });
+  await context.store.save();
+  return reply(interaction, successPanel(`Ты покинул клан **${clan.name}**.`, 'Клан покинут'), { ephemeral: true });
+}
+
+function ratingComponents(context, guildId) {
+  const rows = context.store.clans(guildId)
+    .map((clan) => context.store.ensureClanShape(clan))
+    .sort((a, b) => (b.seasonPoints || 0) - (a.seasonPoints || 0) || (b.rating || 0) - (a.rating || 0))
+    .slice(0, 10)
+    .map((clan, index) => `**${index + 1}.** ${clan.name} — ${clan.seasonPoints || 0} SP • уровень ${clan.level}`);
+  return panel({
+    title: 'Клановый рейтинг',
+    icon: ICONS.tops,
+    eyebrow: 'Кланы Onix',
+    description: 'Топ по сезонным очкам и рейтингу.',
+    color: COLORS.clans,
+    lines: rows.length ? rows : ['Кланы пока не участвуют в рейтинге.']
+  });
+}
+
+function bankPanel(clan) {
+  const nextUnlock = nextClanUnlock(clan.level);
+  return panel({
+    title: `Банк клана — ${clan.name}`,
+    icon: ICONS.economy,
+    eyebrow: 'Кланы Onix',
+    description: `${ICONS.coins} В банке: **${formatCoins(clan.bank)}**`,
+    color: COLORS.clans,
+    stats: [
+      { icon: ICONS.level, name: 'Уровень', value: String(clan.level) },
+      { icon: ICONS.up, name: 'Стоимость улучшения', value: formatCoins(clanLevelCost(clan)) },
+      { icon: ICONS.star, name: 'Сезонные очки', value: String(clan.seasonPoints || 0) },
+      { icon: ICONS.info, name: 'Следующее открытие', value: nextUnlock ? `Ур. ${nextUnlock.level}: ${nextUnlock.title}` : 'все механики открыты' }
+    ],
+    statColumns: 1
+  });
+}
+
+async function donate(interaction, context, clan, amount) {
+  const profile = context.store.ensureUser(interaction.guildId, interaction.user);
+  if (profile.clanId !== clan.id) return reply(interaction, errorPanel('Донатить можно только в свой клан.'), { ephemeral: true });
+  if (!Number.isInteger(amount) || amount < 1) return reply(interaction, errorPanel('Сумма доната должна быть целым числом ≥ 1.'), { ephemeral: true });
+  if (profile.balance < amount) return reply(interaction, errorPanel('У тебя не хватает монет.'), { ephemeral: true });
+
+  profile.balance -= amount;
+  clan.bank += amount;
+  clan.xp += Math.floor(amount / 5);
+  context.store.progressClanQuest(interaction.guildId, interaction.user.id, 'donate_1000', amount);
+  context.store.recordTransaction(interaction.guildId, {
+    type: 'clan',
+    fromId: interaction.user.id,
+    amount,
+    note: `донат в клан ${clan.name}`
+  });
+  await context.store.save();
+  return reply(interaction, successPanel(`Ты внёс **${formatCoins(amount)}** в банк клана **${clan.name}**.`, 'Клановый донат'));
+}
+
+function questsPanel(clan) {
+  return panel({
+    title: `Клановые задания — ${clan.name}`,
+    icon: ICONS.star,
+    eyebrow: 'Кланы Onix',
+    description: clanHasUnlock(clan, 'quest_bonus')
+      ? 'Выполняются всей командой. У клана открыт буст: награды заданий увеличены на 15%.'
+      : 'Выполняются всей командой. Награды идут в банк и XP клана.',
+    color: COLORS.clans,
+    lines: clan.quests.map((quest) =>
+      `${quest.completed ? ICONS.success : ICONS.star} **${quest.title}**\n-# ${quest.completed ? 'выполнено' : `${quest.progress}/${quest.target}`} • награда ${formatCoins(quest.reward)}`
+    )
+  });
+}
+
+function clanShopPanel(clan) {
+  const lines = [
+    `**Улучшение клана** — ${formatCoins(clanLevelCost(clan))}`,
+    clanHasUnlock(clan, 'war') ? '**Военный контракт** — открыт, запускай через `/clan война`' : '**Военный контракт** — откроется на 3 уровне',
+    clanHasUnlock(clan, 'war_bonus') ? '**Военный буст** — активен: +20% к очкам войны' : '**Военный буст** — откроется на 4 уровне',
+    clanHasUnlock(clan, 'roles') ? '**Клановая роль** — доступна для настройки владельцем' : '**Клановая роль** — откроется на 5 уровне',
+    clanHasUnlock(clan, 'quest_bonus') ? '**Буст заданий** — активен: +15% к наградам' : '**Буст заданий** — откроется на 7 уровне'
+  ];
+  return panel({
+    title: `Клановый магазин — ${clan.name}`,
+    icon: ICONS.shop,
+    eyebrow: 'Кланы Onix',
+    description: `${ICONS.coins} Банк: **${formatCoins(clan.bank)}**`,
+    color: COLORS.clans,
+    lines,
+    footer: 'Покупки кланового магазина используют банк клана.'
+  });
+}
+
+async function upgradeClan(interaction, context, clan) {
+  if (!ensureOwner(interaction, clan)) return reply(interaction, errorPanel('Улучшать клан может только владелец.'), { ephemeral: true });
+  const cost = clanLevelCost(clan);
+  if (clan.bank < cost) return reply(interaction, errorPanel(`В банке не хватает монет. Нужно ${formatCoins(cost)}.`), { ephemeral: true });
+
+  clan.bank -= cost;
+  const previousLevel = clan.level;
+  clan.level += 1;
+  clan.rating += 10;
+  const opened = CLAN_UNLOCKS
+    .filter((unlock) => unlock.level > previousLevel && unlock.level <= clan.level)
+    .map((unlock) => `• ${unlock.title}: ${unlock.description}`);
+  await context.store.save();
+  return reply(interaction, panel({
+    title: 'Уровень клана повышен',
+    icon: ICONS.up,
+    eyebrow: 'Кланы Onix',
+    description: `Клан **${clan.name}** улучшен до уровня **${clan.level}**.`,
+    color: COLORS.success,
+    fields: [
+      { name: `${ICONS.coins} Списано из банка`, value: formatCoins(cost) },
+      { name: `${ICONS.success} Открыто`, value: opened.length ? opened.join('\n') : 'новые механики на следующих уровнях' },
+      { name: `${ICONS.up} Следующий уровень`, value: formatCoins(clanLevelCost(clan)) }
+    ]
+  }));
+}
+
+function onlinePanel(context, guildId, clan) {
+  return panel({
+    title: `Онлайн клана — ${clan.name}`,
+    icon: ICONS.voice,
+    eyebrow: 'Кланы Onix',
+    description: `${ICONS.profile} Участников: ${clan.members?.length || 0}`,
+    color: COLORS.clans,
+    stats: [
+      { icon: ICONS.voice, name: 'Голосовой онлайн', value: formatMinutes(clanOnline(context.store, guildId, context.voiceTracker, clan)) }
+    ]
+  });
+}
+
+async function warAction(interaction, context, clan, action, enemyName) {
+  if (!clanHasUnlock(clan, 'war')) return reply(interaction, lockedClanPanel(clan, 'war'), { ephemeral: true });
+  const activeWar = context.store.activeWarForClan(interaction.guildId, clan.id);
+
+  if (action === 'start') {
+    if (!ensureOwner(interaction, clan)) return reply(interaction, errorPanel('Начать войну может только владелец клана.'), { ephemeral: true });
+    if (activeWar) return reply(interaction, errorPanel('У клана уже есть активная война.'), { ephemeral: true });
+    if (!enemyName) return reply(interaction, errorPanel('Укажи клан соперника.'), { ephemeral: true });
+    const enemy = context.store.findClan(interaction.guildId, enemyName);
+    if (!enemy || enemy.id === clan.id) return reply(interaction, errorPanel('Клан соперника не найден.'), { ephemeral: true });
+    if (context.store.activeWarForClan(interaction.guildId, enemy.id)) return reply(interaction, errorPanel('У соперника уже есть активная война.'), { ephemeral: true });
+
+    const war = context.store.createClanWar(interaction.guildId, clan.id, enemy.id);
+    await context.store.save();
+    const startCard = await buildWarCard({
+      title: 'Война началась',
+      subtitle: 'Срок: 24 часа',
+      a: { name: clan.name, score: 0 },
+      b: { name: enemy.name, score: 0 }
+    });
+    return reply(interaction, mediaPanel({
+      title: 'Клановая война началась',
+      icon: '⚔️',
+      eyebrow: 'Клановые войны',
+      description: `**${clan.name}** ⚔️ **${enemy.name}**\nОчки: +1 сообщение, +5 за 10 минут войса, +20 победа в дуэли, +50 участие в ивенте.`,
+      color: COLORS.danger,
+      imageUrl: startCard?.imageUrl,
+      footer: `ID войны: ${war.id}`
+    }), { files: startCard?.files });
+  }
+
+  if (!activeWar) return reply(interaction, errorPanel('У клана нет активной войны.'), { ephemeral: true });
+  const enemyId = activeWar.clanAId === clan.id ? activeWar.clanBId : activeWar.clanAId;
+  const enemy = context.store.guild(interaction.guildId).clans[enemyId];
+  const ownScore = activeWar.clanAId === clan.id ? activeWar.scoreA : activeWar.scoreB;
+  const enemyScore = activeWar.clanAId === clan.id ? activeWar.scoreB : activeWar.scoreA;
+
+  if (action === 'finish') {
+    if (activeWar.endsAt > Date.now() && !ensureOwner(interaction, clan)) {
+      return reply(interaction, errorPanel('Досрочно завершить войну может только владелец.'), { ephemeral: true });
+    }
+    const result = context.store.finishClanWar(interaction.guildId, activeWar.id);
+    await context.store.save();
+    const finishCard = await buildWarCard({
+      title: 'Война завершена',
+      subtitle: `Победитель: ${result.winner.name}`,
+      a: { name: clan.name, score: ownScore },
+      b: { name: enemy?.name || 'Соперник', score: enemyScore }
+    });
+    return reply(interaction, mediaPanel({
+      title: 'Клановая война завершена',
+      icon: ICONS.tops,
+      eyebrow: 'Клановые войны',
+      description: `Победитель: **${result.winner.name}**\nНаграда: **500 XP**, **1000 монет в банк**, **50 сезонных очков**.`,
+      color: COLORS.clans,
+      imageUrl: finishCard?.imageUrl
+    }), { files: finishCard?.files });
+  }
+
+  const statusCard = await buildWarCard({
+    title: 'Клановая война',
+    subtitle: `До конца: ${formatDuration(activeWar.endsAt - Date.now())}`,
+    a: { name: clan.name, score: ownScore },
+    b: { name: enemy?.name || 'Соперник', score: enemyScore }
+  });
+  return reply(interaction, mediaPanel({
+    title: 'Статус клановой войны',
+    icon: '⚔️',
+    eyebrow: 'Клановые войны',
+    description: `**${clan.name}** ⚔️ **${enemy?.name || 'Соперник'}**\nДо конца: **${formatDuration(activeWar.endsAt - Date.now())}**`,
+    color: COLORS.danger,
+    imageUrl: statusCard?.imageUrl
+  }), { files: statusCard?.files });
+}
+
+// Статичная панель кланов (публикуется /панель).
+function hubPanel(imageUrl) {
+  return panel({
+    imageUrl,
+    title: 'Кланы',
+    icon: ICONS.clan,
+    eyebrow: 'Кланы Onix',
+    description: 'Профиль, банк, задания, магазин, война, рейтинг и управление кланом — всё в одной панели.',
+    color: COLORS.clans,
+    footer: 'Действия применяются к твоему клану. «Создать» и «Вступить» — для тех, кто без клана.',
+    actions: [
+      button('clan:hub:profile', '🛡️ Профиль', ButtonStyle.Primary),
+      button('clan:hub:bank', '💰 Банк', ButtonStyle.Secondary),
+      button('clan:hub:donate', '🪙 Донат', ButtonStyle.Secondary),
+      button('clan:hub:quests', '⭐ Задания', ButtonStyle.Secondary),
+      button('clan:hub:shop', '🛒 Магазин', ButtonStyle.Secondary),
+      button('clan:hub:war', '⚔️ Война', ButtonStyle.Secondary),
+      button('clan:hub:upgrade', '📈 Улучшить', ButtonStyle.Secondary),
+      button('clan:hub:online', '🔊 Онлайн', ButtonStyle.Secondary),
+      button('clan:hub:rating', '🏆 Рейтинг', ButtonStyle.Secondary),
+      button('clan:hub:create', '➕ Создать', ButtonStyle.Success),
+      button('clan:hub:join', '🚪 Вступить', ButtonStyle.Success),
+      button('clan:hub:leave', '🚪 Выйти', ButtonStyle.Danger)
+    ]
+  });
+}
+
+function textModal(customId, title, fields) {
+  const modal = new ModalBuilder().setCustomId(customId).setTitle(title);
+  for (const f of fields) {
+    modal.addComponents(new ActionRowBuilder().addComponents(
+      new TextInputBuilder()
+        .setCustomId(f.id)
+        .setLabel(f.label)
+        .setStyle(f.paragraph ? TextInputStyle.Paragraph : TextInputStyle.Short)
+        .setRequired(Boolean(f.required))
+        .setMinLength(f.min || 0)
+        .setMaxLength(f.max || 100)
+    ));
+  }
+  return modal;
+}
+
 const commands = [
   {
     data: new SlashCommandBuilder()
@@ -175,68 +467,14 @@ const commands = [
       const subcommand = interaction.options.getSubcommand();
 
       if (subcommand === 'создать') {
-        const profile = context.store.ensureUser(interaction.guildId, interaction.user);
-        if (profile.clanId) {
-          return reply(interaction, errorPanel('Ты уже состоишь в клане. Сначала используй `/clan выйти`.'), { ephemeral: true });
-        }
-
-        const name = interaction.options.getString('name', true).trim();
-        const description = interaction.options.getString('description') || 'Описание не указано.';
-        if (context.store.findClan(interaction.guildId, name)) {
-          return reply(interaction, errorPanel('Клан с таким названием уже существует.'), { ephemeral: true });
-        }
-
-        const clan = context.store.createClan(interaction.guildId, {
-          id: `${Date.now().toString(36)}-${interaction.user.id}`,
-          name,
-          description,
-          ownerId: interaction.user.id
+        return createClan(interaction, context, {
+          name: interaction.options.getString('name', true),
+          description: interaction.options.getString('description')
         });
-        profile.clanId = clan.id;
-        await context.store.save();
-        return reply(interaction, successPanel(`Клан **${name}** создан.`, 'Клан создан'));
       }
-
-      if (subcommand === 'вступить') {
-        const profile = context.store.ensureUser(interaction.guildId, interaction.user);
-        if (profile.clanId) {
-          return reply(interaction, errorPanel('Ты уже состоишь в клане. Сначала используй `/clan выйти`.'), { ephemeral: true });
-        }
-
-        const clan = context.store.findClan(interaction.guildId, interaction.options.getString('name', true));
-        if (!clan) return reply(interaction, errorPanel('Клан с таким названием не найден.'), { ephemeral: true });
-
-        clan.members ||= [];
-        if (!clan.members.includes(interaction.user.id)) clan.members.push(interaction.user.id);
-        profile.clanId = clan.id;
-        await context.store.save();
-        return reply(interaction, successPanel(`Ты вступил в клан **${clan.name}**.`, 'Добро пожаловать'), { ephemeral: true });
-      }
-
-      if (subcommand === 'выйти') {
-        const clan = context.store.leaveClan(interaction.guildId, interaction.user.id);
-        if (!clan) return reply(interaction, errorPanel('Ты сейчас не состоишь в клане.'), { ephemeral: true });
-
-        await context.store.save();
-        return reply(interaction, successPanel(`Ты покинул клан **${clan.name}**.`, 'Клан покинут'), { ephemeral: true });
-      }
-
-      if (subcommand === 'рейтинг') {
-        const rows = context.store.clans(interaction.guildId)
-          .map((clan) => context.store.ensureClanShape(clan))
-          .sort((a, b) => (b.seasonPoints || 0) - (a.seasonPoints || 0) || (b.rating || 0) - (a.rating || 0))
-          .slice(0, 10)
-          .map((clan, index) => `**${index + 1}.** ${clan.name} — ${clan.seasonPoints || 0} SP • уровень ${clan.level}`);
-
-        return reply(interaction, panel({
-          title: 'Клановый рейтинг',
-          icon: ICONS.tops,
-          eyebrow: 'Кланы Onix',
-          description: 'Топ по сезонным очкам и рейтингу.',
-          color: COLORS.clans,
-          lines: rows.length ? rows : ['Кланы пока не участвуют в рейтинге.']
-        }));
-      }
+      if (subcommand === 'вступить') return joinClan(interaction, context, interaction.options.getString('name', true));
+      if (subcommand === 'выйти') return leaveClanAction(interaction, context);
+      if (subcommand === 'рейтинг') return reply(interaction, ratingComponents(context, interaction.guildId));
 
       const clan = resolveClan(interaction, context);
       if (!clan) {
@@ -244,209 +482,18 @@ const commands = [
       }
       context.store.ensureClanShape(clan);
 
-      if (subcommand === 'банк') {
-        const nextUnlock = nextClanUnlock(clan.level);
-        return reply(interaction, panel({
-          title: `Банк клана — ${clan.name}`,
-          icon: ICONS.economy,
-          eyebrow: 'Кланы Onix',
-          description: `${ICONS.coins} В банке: **${formatCoins(clan.bank)}**`,
-          color: COLORS.clans,
-          stats: [
-            { icon: ICONS.level, name: 'Уровень', value: String(clan.level) },
-            { icon: ICONS.up, name: 'Стоимость улучшения', value: formatCoins(clanLevelCost(clan)) },
-            { icon: ICONS.star, name: 'Сезонные очки', value: String(clan.seasonPoints || 0) },
-            { icon: ICONS.info, name: 'Следующее открытие', value: nextUnlock ? `Ур. ${nextUnlock.level}: ${nextUnlock.title}` : 'все механики открыты' }
-          ],
-          statColumns: 1
-        }));
-      }
-
-      if (subcommand === 'донат') {
-        const amount = interaction.options.getInteger('сумма', true);
-        const profile = context.store.ensureUser(interaction.guildId, interaction.user);
-        if (profile.clanId !== clan.id) return reply(interaction, errorPanel('Донатить можно только в свой клан.'), { ephemeral: true });
-        if (profile.balance < amount) return reply(interaction, errorPanel('У тебя не хватает монет.'), { ephemeral: true });
-
-        profile.balance -= amount;
-        clan.bank += amount;
-        clan.xp += Math.floor(amount / 5);
-        context.store.progressClanQuest(interaction.guildId, interaction.user.id, 'donate_1000', amount);
-        context.store.recordTransaction(interaction.guildId, {
-          type: 'clan',
-          fromId: interaction.user.id,
-          amount,
-          note: `донат в клан ${clan.name}`
-        });
-        await context.store.save();
-        return reply(interaction, successPanel(`Ты внёс **${formatCoins(amount)}** в банк клана **${clan.name}**.`, 'Клановый донат'));
-      }
-
-      if (subcommand === 'задания') {
-        return reply(interaction, panel({
-          title: `Клановые задания — ${clan.name}`,
-          icon: ICONS.star,
-          eyebrow: 'Кланы Onix',
-          description: clanHasUnlock(clan, 'quest_bonus')
-            ? 'Выполняются всей командой. У клана открыт буст: награды заданий увеличены на 15%.'
-            : 'Выполняются всей командой. Награды идут в банк и XP клана.',
-          color: COLORS.clans,
-          lines: clan.quests.map((quest) =>
-            `${quest.completed ? ICONS.success : ICONS.star} **${quest.title}**\n-# ${quest.completed ? 'выполнено' : `${quest.progress}/${quest.target}`} • награда ${formatCoins(quest.reward)}`
-          )
-        }));
-      }
-
+      if (subcommand === 'банк') return reply(interaction, bankPanel(clan));
+      if (subcommand === 'донат') return donate(interaction, context, clan, interaction.options.getInteger('сумма', true));
+      if (subcommand === 'задания') return reply(interaction, questsPanel(clan));
       if (subcommand === 'магазин') {
         if (!clanHasUnlock(clan, 'shop')) return reply(interaction, lockedClanPanel(clan, 'shop'), { ephemeral: true });
-
-        const lines = [
-          `**Улучшение клана** — ${formatCoins(clanLevelCost(clan))}`,
-          clanHasUnlock(clan, 'war')
-            ? '**Военный контракт** — открыт, запускай через `/clan война`'
-            : '**Военный контракт** — откроется на 3 уровне',
-          clanHasUnlock(clan, 'war_bonus')
-            ? '**Военный буст** — активен: +20% к очкам войны'
-            : '**Военный буст** — откроется на 4 уровне',
-          clanHasUnlock(clan, 'roles')
-            ? '**Клановая роль** — доступна для настройки владельцем'
-            : '**Клановая роль** — откроется на 5 уровне',
-          clanHasUnlock(clan, 'quest_bonus')
-            ? '**Буст заданий** — активен: +15% к наградам'
-            : '**Буст заданий** — откроется на 7 уровне'
-        ];
-
-        return reply(interaction, panel({
-          title: `Клановый магазин — ${clan.name}`,
-          icon: ICONS.shop,
-          eyebrow: 'Кланы Onix',
-          description: `${ICONS.coins} Банк: **${formatCoins(clan.bank)}**`,
-          color: COLORS.clans,
-          lines,
-          footer: 'Покупки кланового магазина используют банк клана.'
-        }));
+        return reply(interaction, clanShopPanel(clan));
       }
-
-      if (subcommand === 'улучшить') {
-        if (!ensureOwner(interaction, clan)) return reply(interaction, errorPanel('Улучшать клан может только владелец.'), { ephemeral: true });
-        const cost = clanLevelCost(clan);
-        if (clan.bank < cost) return reply(interaction, errorPanel(`В банке не хватает монет. Нужно ${formatCoins(cost)}.`), { ephemeral: true });
-
-        clan.bank -= cost;
-        const previousLevel = clan.level;
-        clan.level += 1;
-        clan.rating += 10;
-        const opened = CLAN_UNLOCKS
-          .filter((unlock) => unlock.level > previousLevel && unlock.level <= clan.level)
-          .map((unlock) => `• ${unlock.title}: ${unlock.description}`);
-        await context.store.save();
-        return reply(interaction, panel({
-          title: 'Уровень клана повышен',
-          icon: ICONS.up,
-          eyebrow: 'Кланы Onix',
-          description: `Клан **${clan.name}** улучшен до уровня **${clan.level}**.`,
-          color: COLORS.success,
-          fields: [
-            { name: `${ICONS.coins} Списано из банка`, value: formatCoins(cost) },
-            { name: `${ICONS.success} Открыто`, value: opened.length ? opened.join('\n') : 'новые механики на следующих уровнях' },
-            { name: `${ICONS.up} Следующий уровень`, value: formatCoins(clanLevelCost(clan)) }
-          ]
-        }));
-      }
-
+      if (subcommand === 'улучшить') return upgradeClan(interaction, context, clan);
       if (subcommand === 'война') {
-        if (!clanHasUnlock(clan, 'war')) return reply(interaction, lockedClanPanel(clan, 'war'), { ephemeral: true });
-
-        const action = interaction.options.getString('действие', true);
-        const activeWar = context.store.activeWarForClan(interaction.guildId, clan.id);
-
-        if (action === 'start') {
-          if (!ensureOwner(interaction, clan)) return reply(interaction, errorPanel('Начать войну может только владелец клана.'), { ephemeral: true });
-          if (activeWar) return reply(interaction, errorPanel('У клана уже есть активная война.'), { ephemeral: true });
-
-          const enemyName = interaction.options.getString('клан');
-          if (!enemyName) return reply(interaction, errorPanel('Укажи клан соперника.'), { ephemeral: true });
-          const enemy = context.store.findClan(interaction.guildId, enemyName);
-          if (!enemy || enemy.id === clan.id) return reply(interaction, errorPanel('Клан соперника не найден.'), { ephemeral: true });
-          if (context.store.activeWarForClan(interaction.guildId, enemy.id)) return reply(interaction, errorPanel('У соперника уже есть активная война.'), { ephemeral: true });
-
-          const war = context.store.createClanWar(interaction.guildId, clan.id, enemy.id);
-          await context.store.save();
-          const startCard = await buildWarCard({
-            title: 'Война началась',
-            subtitle: 'Срок: 24 часа',
-            a: { name: clan.name, score: 0 },
-            b: { name: enemy.name, score: 0 }
-          });
-          return reply(interaction, mediaPanel({
-            title: 'Клановая война началась',
-            icon: '⚔️',
-            eyebrow: 'Клановые войны',
-            description: `**${clan.name}** ⚔️ **${enemy.name}**\nОчки: +1 сообщение, +5 за 10 минут войса, +20 победа в дуэли, +50 участие в ивенте.`,
-            color: COLORS.danger,
-            imageUrl: startCard?.imageUrl,
-            footer: `ID войны: ${war.id}`
-          }), { files: startCard?.files });
-        }
-
-        if (!activeWar) return reply(interaction, errorPanel('У клана нет активной войны.'), { ephemeral: true });
-        const enemyId = activeWar.clanAId === clan.id ? activeWar.clanBId : activeWar.clanAId;
-        const enemy = context.store.guild(interaction.guildId).clans[enemyId];
-
-        if (action === 'finish') {
-          if (activeWar.endsAt > Date.now() && !ensureOwner(interaction, clan)) {
-            return reply(interaction, errorPanel('Досрочно завершить войну может только владелец.'), { ephemeral: true });
-          }
-          const result = context.store.finishClanWar(interaction.guildId, activeWar.id);
-          await context.store.save();
-          const ownScore = activeWar.clanAId === clan.id ? activeWar.scoreA : activeWar.scoreB;
-          const enemyScore = activeWar.clanAId === clan.id ? activeWar.scoreB : activeWar.scoreA;
-          const finishCard = await buildWarCard({
-            title: 'Война завершена',
-            subtitle: `Победитель: ${result.winner.name}`,
-            a: { name: clan.name, score: ownScore },
-            b: { name: enemy?.name || 'Соперник', score: enemyScore }
-          });
-          return reply(interaction, mediaPanel({
-            title: 'Клановая война завершена',
-            icon: ICONS.tops,
-            eyebrow: 'Клановые войны',
-            description: `Победитель: **${result.winner.name}**\nНаграда: **500 XP**, **1000 монет в банк**, **50 сезонных очков**.`,
-            color: COLORS.clans,
-            imageUrl: finishCard?.imageUrl
-          }), { files: finishCard?.files });
-        }
-
-        const ownScore = activeWar.clanAId === clan.id ? activeWar.scoreA : activeWar.scoreB;
-        const enemyScore = activeWar.clanAId === clan.id ? activeWar.scoreB : activeWar.scoreA;
-        const statusCard = await buildWarCard({
-          title: 'Клановая война',
-          subtitle: `До конца: ${formatDuration(activeWar.endsAt - Date.now())}`,
-          a: { name: clan.name, score: ownScore },
-          b: { name: enemy?.name || 'Соперник', score: enemyScore }
-        });
-        return reply(interaction, mediaPanel({
-          title: 'Статус клановой войны',
-          icon: '⚔️',
-          eyebrow: 'Клановые войны',
-          description: `**${clan.name}** ⚔️ **${enemy?.name || 'Соперник'}**\nДо конца: **${formatDuration(activeWar.endsAt - Date.now())}**`,
-          color: COLORS.danger,
-          imageUrl: statusCard?.imageUrl
-        }), { files: statusCard?.files });
+        return warAction(interaction, context, clan, interaction.options.getString('действие', true), interaction.options.getString('клан'));
       }
-
-      if (subcommand === 'онлайн') {
-        return reply(interaction, panel({
-          title: `Онлайн клана — ${clan.name}`,
-          icon: ICONS.voice,
-          eyebrow: 'Кланы Onix',
-          description: `${ICONS.profile} Участников: ${clan.members?.length || 0}`,
-          color: COLORS.clans,
-          stats: [
-            { icon: ICONS.voice, name: 'Голосовой онлайн', value: formatMinutes(clanOnline(context.store, interaction.guildId, context.voiceTracker, clan)) }
-          ]
-        }));
-      }
+      if (subcommand === 'онлайн') return reply(interaction, onlinePanel(context, interaction.guildId, clan));
 
       const { components, files } = await clanProfilePanel(context, interaction.guildId, clan);
       return reply(interaction, components, { files });
@@ -454,6 +501,116 @@ const commands = [
   }
 ];
 
+async function handleComponent(interaction, context) {
+  const isModal = interaction.isModalSubmit?.();
+  if (!interaction.isButton() && !isModal) return false;
+  if (!interaction.customId.startsWith('clan:hub')) return false;
+
+  const guildError = requireGuild(interaction);
+  if (guildError) {
+    await reply(interaction, errorPanel(guildError), { ephemeral: true });
+    return true;
+  }
+  context.store.ensureUser(interaction.guildId, interaction.user);
+  const sub = interaction.customId.split(':')[2];
+
+  // Действия без существующего клана.
+  if (sub === 'create') {
+    await interaction.showModal(textModal('clan:hub:create-submit', 'Создать клан', [
+      { id: 'name', label: 'Название клана', required: true, min: 2, max: 32 },
+      { id: 'description', label: 'Описание (необязательно)', max: 180, paragraph: true }
+    ]));
+    return true;
+  }
+  if (sub === 'create-submit') {
+    await createClan(interaction, context, {
+      name: interaction.fields.getTextInputValue('name'),
+      description: interaction.fields.getTextInputValue('description').trim() || null
+    });
+    return true;
+  }
+  if (sub === 'join') {
+    await interaction.showModal(textModal('clan:hub:join-submit', 'Вступить в клан', [
+      { id: 'name', label: 'Название клана', required: true, min: 2, max: 32 }
+    ]));
+    return true;
+  }
+  if (sub === 'join-submit') {
+    await joinClan(interaction, context, interaction.fields.getTextInputValue('name').trim());
+    return true;
+  }
+  if (sub === 'rating') {
+    await reply(interaction, ratingComponents(context, interaction.guildId), { ephemeral: true });
+    return true;
+  }
+
+  // Дальше — действия в своём клане.
+  const clan = context.store.userClan(interaction.guildId, interaction.user.id);
+  if (!clan) {
+    await reply(interaction, errorPanel('Ты не состоишь в клане. Нажми «Создать» или «Вступить».'), { ephemeral: true });
+    return true;
+  }
+  context.store.ensureClanShape(clan);
+
+  if (sub === 'profile') {
+    const { components, files } = await clanProfilePanel(context, interaction.guildId, clan);
+    await reply(interaction, components, { files, ephemeral: true });
+    return true;
+  }
+  if (sub === 'bank') { await reply(interaction, bankPanel(clan), { ephemeral: true }); return true; }
+  if (sub === 'quests') { await reply(interaction, questsPanel(clan), { ephemeral: true }); return true; }
+  if (sub === 'shop') {
+    if (!clanHasUnlock(clan, 'shop')) { await reply(interaction, lockedClanPanel(clan, 'shop'), { ephemeral: true }); return true; }
+    await reply(interaction, clanShopPanel(clan), { ephemeral: true });
+    return true;
+  }
+  if (sub === 'online') { await reply(interaction, onlinePanel(context, interaction.guildId, clan), { ephemeral: true }); return true; }
+  if (sub === 'upgrade') { await upgradeClan(interaction, context, clan); return true; }
+  if (sub === 'leave') { await leaveClanAction(interaction, context); return true; }
+  if (sub === 'donate') {
+    await interaction.showModal(textModal('clan:hub:donate-submit', 'Донат в банк клана', [
+      { id: 'amount', label: 'Сумма монет', required: true, max: 7 }
+    ]));
+    return true;
+  }
+  if (sub === 'donate-submit') {
+    await donate(interaction, context, clan, Number.parseInt(interaction.fields.getTextInputValue('amount').trim(), 10));
+    return true;
+  }
+  if (sub === 'war') {
+    if (!clanHasUnlock(clan, 'war')) { await reply(interaction, lockedClanPanel(clan, 'war'), { ephemeral: true }); return true; }
+    await reply(interaction, panel({
+      title: 'Клановая война',
+      icon: '⚔️',
+      eyebrow: 'Кланы Onix',
+      description: 'Выбери действие.',
+      color: COLORS.danger,
+      actions: [
+        button('clan:hub:war-status', 'Статус', ButtonStyle.Secondary),
+        button('clan:hub:war-start', 'Начать', ButtonStyle.Danger),
+        button('clan:hub:war-finish', 'Завершить', ButtonStyle.Primary)
+      ]
+    }), { ephemeral: true });
+    return true;
+  }
+  if (sub === 'war-start') {
+    await interaction.showModal(textModal('clan:hub:war-start-submit', 'Начать войну', [
+      { id: 'enemy', label: 'Название клана соперника', required: true, min: 2, max: 32 }
+    ]));
+    return true;
+  }
+  if (sub === 'war-start-submit') {
+    await warAction(interaction, context, clan, 'start', interaction.fields.getTextInputValue('enemy').trim());
+    return true;
+  }
+  if (sub === 'war-status') { await warAction(interaction, context, clan, 'status', null); return true; }
+  if (sub === 'war-finish') { await warAction(interaction, context, clan, 'finish', null); return true; }
+
+  return false;
+}
+
 module.exports = {
-  commands
+  commands,
+  handleComponent,
+  hubPanel
 };
